@@ -2,6 +2,12 @@
 
 The source fork preserves Paperclip's MIT license and upstream history. Keep the upstream remote and use a separate enhancement branch for local changes. Run development through the upstream dev commands and use a separate Paperclip home and database.
 
+## Changes in the personal workbench branch
+
+- English and Simplified Chinese can be selected in the sign-in, onboarding and account surfaces. The current catalogs cover the main organization, task, Agent, project, approval and settings workflows. Some nested and provider-specific surfaces still use their English labels.
+- Antigravity setup distinguishes an unavailable pinned ACP installation from a Google sign-in failure. The local environment template opts out of subscription-based Antigravity integration. It preserves explicit provider API key configuration. Use Google provider authentication only with authorization for the intended integration.
+- Source releases package the compiled server, UI and Runner and trim generated Rust caches. Keep the development checkout available for building and debugging.
+
 ## Build an immutable release
 
 Use the Node and pnpm versions listed in the root manifest and the Rust toolchain pinned in packages/paperclip-runner. Install Linux build prerequisites for the native Runner. Build outside the development checkout, at the exact absolute location that systemd will use. The runtime bundle preserves absolute paths to build outputs.
