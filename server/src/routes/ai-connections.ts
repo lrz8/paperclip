@@ -4,6 +4,10 @@ import { validateAiApiKey } from "../services/ai-api-key-test.js";
 export { validateAiApiKey } from "../services/ai-api-key-test.js";
 import { supportsHostedGoogleAiLogin, supportsLocalAiLogin } from "../services/local-ai-login-policy.js";
 import { localAiLoginService } from "../services/local-ai-login.js";
+import {
+  ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED,
+  ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE,
+} from "../services/native-runtime/antigravity-connection-policy.js";
 import { z } from "zod";
 import { Router, type Request } from "express";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -153,7 +157,11 @@ export function aiConnectionRoutes(db: Db, options: Parameters<typeof supportsLo
   const localLoginAvailable = () => supportsLocalAiLogin(options);
   const hostedGoogleLoginAvailable = () => supportsHostedGoogleAiLogin(options);
   function assertLocalLoginAvailable(provider?: AiConnectionLoginIntent["provider"]) {
-    if (provider === "google" ? (hostedGoogleLoginAvailable() || localLoginAvailable()) : localLoginAvailable()) return;
+    if (provider === "google") {
+      if (hostedGoogleLoginAvailable()) return;
+      throw unprocessable(ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE, { code: ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED });
+    }
+    if (localLoginAvailable()) return;
     throw unprocessable("Server-host subscription sign-in is unavailable on this hosted instance. Choose a supported sign-in environment or use an API key.");
   }
   const router = Router();
@@ -219,9 +227,6 @@ export function aiConnectionRoutes(db: Db, options: Parameters<typeof supportsLo
     res.setHeader("Cache-Control", "no-store");
     assertBoard(req);
     assertCompanyAccess(req, companyId);
-    if (!localLoginAvailable() && !hostedGoogleLoginAvailable()) {
-      throw unprocessable("Server-host subscription sign-in is unavailable on this hosted instance. Choose a supported sign-in environment or use an API key.");
-    }
     const id = z.string().uuid().parse(req.params.sessionId);
     await localLogin.submitCode(companyId, getActorInfo(req).actorId, id, localAiLoginCodeSchema.parse(req.body.browserCode), {
       allowLocalProviders: localLoginAvailable(),

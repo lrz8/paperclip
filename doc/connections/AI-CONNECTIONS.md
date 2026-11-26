@@ -640,6 +640,15 @@ for native onboarding and physical login-process retirement. Cancellation and
 expiry await retirement before removing the private home. After a server restart,
 start a new Google sign-in attempt.
 
+Set `PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED=false` on the server to
+disable new Google Antigravity subscription sign-ins, related setup checks and
+runs, and the CLI `/swarm` route. Previously saved connections remain visible
+for removal. Explicit Google API-key connections retain their existing
+behavior. Consult Google's account and integration requirements before using a
+subscription through an external application. The official CLI's direct
+headless mode and IDE ACP support have distinct intended uses.
+[Google Antigravity FAQ](https://antigravity.google/docs/faq/)
+
 Disconnecting a Google Antigravity account, or removing its connection, deletes
 the sign-in that Paperclip saved for it. Paperclip does not revoke the sign-in at
 Google. The sign-in uses the OAuth client of Google's own Antigravity runtime, not

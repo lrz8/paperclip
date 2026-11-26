@@ -86,6 +86,20 @@ function googleIdentity(emailVerified = true) {
 }
 
 describe("Antigravity setup-only Google authentication", () => {
+  it("reports an absent pinned closure before any browser or model request", async () => {
+    const home = await fixture();
+    setup.verify.mockRejectedValueOnce(Object.assign(new Error("untrusted path or credentials"), { code: "ENOENT" }));
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const login = startAntigravityBrowserLogin(home);
+    await vi.waitFor(() => expect(login.outcome).toBe("failure"));
+    expect(login.error).toBe("Google sign-in needs the pinned Antigravity runtime on the Paperclip server. Ask your administrator to install it.");
+    expect(login.authorizationUrl).toBeUndefined();
+    expect(setup.spawn).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    await login.abort();
+  });
+
   it.each(["network", "unverified"])("preserves an OAuth rotation when userinfo %s verification fails", async failure => {
     const home = await realpath(await mkdtemp(join(tmpdir(), "paperclip-antigravity-rotation-test-"))); roots.push(home);
     const { mkdir } = await import("node:fs/promises");

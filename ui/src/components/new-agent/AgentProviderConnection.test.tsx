@@ -131,6 +131,21 @@ describe("AgentProviderConnection hosted Google sign-in gating", () => {
     expect(host.textContent).toContain("127.0.0.1");
   });
 
+  it("does not start Google sign-in on a private host that explicitly disables it", async () => {
+    mocks.healthGet.mockResolvedValue({
+      status: "ok",
+      deploymentMode: "authenticated",
+      deploymentExposure: "private",
+      localAiLoginSupported: true,
+      hostedGoogleAiLoginSupported: false,
+    });
+    renderConnection("antigravity_runtime", true);
+
+    await vi.waitFor(() => expect(host.textContent).toContain("open the official Antigravity CLI"));
+    expect(mocks.startLocalLogin).not.toHaveBeenCalled();
+    expect(host.querySelector('input[aria-label="Google redirect URL"]')).toBeNull();
+  });
+
   it.each(["claude_local", "codex_local"] as const)("keeps local login disabled for %s on hosted instances", async (adapterType) => {
     mocks.healthGet.mockResolvedValue({
       status: "ok",

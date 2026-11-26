@@ -63,6 +63,14 @@ afterEach(async () => {
 });
 
 describe("Google Antigravity setup admission", () => {
+  it("refuses a disabled Google sign-in before reading credentials or starting the runtime", async () => {
+    vi.stubEnv("PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED", "false");
+    await expect(testAntigravityConnection(context, model)).resolves.toMatchObject({ status: "fail",
+      checks: [{ code: "antigravity_google_sign_in_disabled" }] });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.probe).not.toHaveBeenCalled();
+  });
+
   it("reports the observed installation failure with a repair action and only closed server diagnostics", () => {
     const privateValue = "fixture-private-token /private/selected-google-home";
     const error = new Error(privateValue);

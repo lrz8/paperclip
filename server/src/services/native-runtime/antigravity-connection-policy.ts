@@ -6,9 +6,18 @@
 export const ANTIGRAVITY_REMOTE_UNAVAILABLE = "antigravity_remote_unavailable";
 export const ANTIGRAVITY_REMOTE_SIGN_IN_UNSUPPORTED = "antigravity_remote_sign_in_unsupported";
 export const ANTIGRAVITY_WARM_UNSUPPORTED = "antigravity_warm_unsupported";
+export const ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED = "antigravity_google_sign_in_disabled";
+export const ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE =
+  "Google Antigravity sign-in is disabled on this Paperclip deployment. For direct use with a personal Google subscription, open the official Antigravity CLI.";
+
+export function antigravityGoogleSignInEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const setting = env.PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED;
+  return setting === undefined || setting.trim().toLowerCase() === "true";
+}
 
 export type AntigravityConnectionRefusal = {
-  code: typeof ANTIGRAVITY_REMOTE_UNAVAILABLE | typeof ANTIGRAVITY_REMOTE_SIGN_IN_UNSUPPORTED | typeof ANTIGRAVITY_WARM_UNSUPPORTED;
+  code: typeof ANTIGRAVITY_REMOTE_UNAVAILABLE | typeof ANTIGRAVITY_REMOTE_SIGN_IN_UNSUPPORTED
+    | typeof ANTIGRAVITY_WARM_UNSUPPORTED | typeof ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED;
   message: string;
 };
 
@@ -24,6 +33,9 @@ export function antigravityConnectionRefusal(input: {
    */
   remoteCandidateAdmitted?: boolean;
 }): AntigravityConnectionRefusal | null {
+  if (!input.apiKey && !antigravityGoogleSignInEnabled()) {
+    return { code: ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED, message: ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE };
+  }
   // Antigravity runs one turn at a time on every connection until a warm
   // owner is separately qualified; lifecycle resolution already enforces it.
   if (input.lifecycleMode === "warm") {

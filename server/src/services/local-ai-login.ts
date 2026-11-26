@@ -14,6 +14,10 @@ import { environmentService } from "./environments.js";
 import { readVerifiedLocalAiCredentialDetails } from "./local-ai-credentials.js";
 import { logActivity } from "./activity-log.js";
 import { startLocalBrowserLogin, type LocalBrowserLoginState } from "./local-ai-browser-login.js";
+import {
+  ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED,
+  ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE,
+} from "./native-runtime/antigravity-connection-policy.js";
 import { registerIdleLocalWorkProbe } from "./idle-local-work.js";
 
 const LOCAL_LOGIN_METHOD = "local_subscription";
@@ -346,8 +350,8 @@ export function localAiLoginService(db: Db) {
     if (isClaude && !allowLocalProviders) {
       throw unprocessable("Server-host subscription sign-in is unavailable on this hosted instance. Choose a supported sign-in environment or use an API key.");
     }
-    if (isGoogle && !allowLocalProviders && !allowHostedGoogle) {
-      throw unprocessable("Server-host subscription sign-in is unavailable on this hosted instance. Choose a supported sign-in environment or use an API key.");
+    if (isGoogle && !allowHostedGoogle) {
+      throw unprocessable(ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE, { code: ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED });
     }
 
     if (isGoogle) {

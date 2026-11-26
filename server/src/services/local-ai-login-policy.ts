@@ -1,4 +1,5 @@
 import type { DeploymentMode, DeploymentExposure } from "@paperclipai/shared";
+import { antigravityGoogleSignInEnabled } from "./native-runtime/antigravity-connection-policy.js";
 
 export type LocalAiLoginPolicyOptions = {
   deploymentMode?: DeploymentMode;
@@ -20,5 +21,5 @@ export function supportsLocalAiLogin(options: LocalAiLoginPolicyOptions) {
  * relay the user's pasted loopback redirect.
  */
 export function supportsHostedGoogleAiLogin(_options: LocalAiLoginPolicyOptions = {}) {
-  return true;
+  return antigravityGoogleSignInEnabled();
 }

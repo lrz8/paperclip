@@ -3,6 +3,7 @@ import { antigravitySwarmWorkModeAllows, SWARM_REQUEST_MAX_CHARS } from "@paperc
 import { activityLog, agentWakeupRequests, agents, heartbeatRuns, issueComments, issues, type Db } from "@paperclipai/db";
 import { logActivity } from "./activity-log.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE, antigravityGoogleSignInEnabled } from "./native-runtime/antigravity-connection-policy.js";
 import { PaperclipRunnerProviderProfileError } from "./native-runtime/provider-profile.js";
 import { recordedSwarmRequestSql } from "./queued-comment-delivery.js";
 import { saveUndeliveredUserComments } from "./work-intent-outbox.js";
@@ -45,6 +46,7 @@ export function antigravitySwarmRefusal(input: {
   if (!input.enabled) {
     return "Swarm is not turned on for this Paperclip. An instance admin can turn on \"Google Antigravity swarm\" in Settings, Experimental.";
   }
+  if (!antigravityGoogleSignInEnabled()) return ANTIGRAVITY_GOOGLE_SIGN_IN_DISABLED_MESSAGE;
   if (!isAntigravityAgent(input.agent)) return "Swarm works only for tasks assigned to a Google Antigravity agent.";
   if (input.planning || input.workMode === "planning") return "Swarm is not available while the task is in Plan mode: helpers change files. Approve the plan first, then send /swarm.";
   if (input.workMode !== undefined && !antigravitySwarmWorkModeAllows(input.workMode)) {

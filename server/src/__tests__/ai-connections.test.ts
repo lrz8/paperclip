@@ -2658,6 +2658,32 @@ console.log(JSON.stringify({ type: "result", subtype: "success", result: "hello"
     } finally { reader.mockRestore(); }
   });
 
+  it("refuses a new Google login on an opted-out private deployment before starting the runtime", async () => {
+    const { errorHandler } = await import("../middleware/error-handler.js");
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.actor = { type: "board", source: "session", userId: "alice", companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "member" }] };
+      next();
+    });
+    app.use("/api", aiConnectionRoutes(db, { deploymentMode: "authenticated", deploymentExposure: "private" }));
+    app.use(errorHandler);
+    const previous = process.env.PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED;
+    const runtimeStarts = browserLoginMock.startLocalBrowserLogin.mock.calls.length;
+    process.env.PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED = "false";
+    try {
+      const result = await request(app).post(`/api/companies/${companyId}/ai-connections/local/attempts`).send({
+        provider: "google", method: "subscription", ownership: "personal", name: "Google account", allAgents: false, agentIds: [],
+      });
+      expect(result.status).toBe(422);
+      expect(result.body.error).toContain("open the official Antigravity CLI");
+      expect(browserLoginMock.startLocalBrowserLogin).toHaveBeenCalledTimes(runtimeStarts);
+    } finally {
+      if (previous === undefined) delete process.env.PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED;
+      else process.env.PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED = previous;
+    }
+  });
+
   it("allows hosted Google Antigravity sign-in on an authenticated public deployment with full ownership, redaction, and single-use checks", async () => {
     const { errorHandler } = await import("../middleware/error-handler.js");
     const { createHttpLogger } = await import("../middleware/logger.js");

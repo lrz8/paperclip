@@ -92,6 +92,20 @@ beforeEach(async () => { release.pending = true; vi.stubEnv("PAPERCLIP_HOME", aw
 afterEach(async () => { copyFault.phase = ""; copyFault.destination = ""; copyFault.source = ""; copyFault.collisionPath = ""; copyFault.failedRemoval = ""; copyFault.removals = []; copyFault.hits = 0; vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 
 describe("Antigravity managed Runner credentials", () => {
+  it("permanently refuses a saved Google sign-in when disabled while preserving explicit API-key execution", async () => {
+    vi.stubEnv("PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED", "false");
+    const managedHome = await home();
+    for (const remote of [false, true]) {
+      release.pending = false;
+      const refusal = await prepareAntigravityRunnerCredentials({ remote, managedHome, environment: {} }).catch(error => error);
+      expect(refusal).toBeInstanceOf(AntigravityConnectionConfigurationError);
+      expect(refusal).toMatchObject({ code: "antigravity_google_sign_in_disabled" });
+      expect(nativeSessionFailureDisposition(1, new Date(), nativeSessionFailureSourceCode(refusal))).toMatchObject({ phase: "terminal_failure" });
+    }
+    await expect(prepareAntigravityRunnerCredentials({ remote: false, managedHome,
+      environment: { GEMINI_API_KEY: "fixture-approved" } })).resolves.toEqual({ home: null, environment: { GEMINI_API_KEY: "fixture-approved" } });
+  });
+
   it("requires a selected managed account and never borrows the ambient Google home or inline secret", async () => {
     const ambient = await home();
     await writeFile(join(ambient, "antigravity-acp", "acp_token.json"), credential("fixture-ambient"), { mode: 0o600 });

@@ -321,6 +321,21 @@ describe("Google local sign-in service admission", () => {
     f.release(); f.db.selections.push([f.db.session], [f.db.session]); await f.service.cancel("company", "user", f.attempt.sessionId);
   });
 
+  it("rejects an existing Google callback after opt-out even if other local providers remain enabled", async () => {
+    const f = await fixture();
+    const submitRedirect = vi.fn();
+    f.browser.submitRedirect = submitRedirect;
+    f.db.selections.push([f.db.session]);
+    await expect(f.service.submitCode("company", "user", f.attempt.sessionId, "http://127.0.0.1:41234/?state=fixture&code=fixture", {
+      allowLocalProviders: true,
+      allowHostedGoogle: false,
+    })).rejects.toMatchObject({ status: 422, details: { code: "antigravity_google_sign_in_disabled" } });
+    expect(submitRedirect).not.toHaveBeenCalled();
+    f.release();
+    f.db.selections.push([f.db.session], [f.db.session]);
+    await f.service.cancel("company", "user", f.attempt.sessionId);
+  });
+
   it("falls back to an active non-local environment for hosted Google sign-in when no local environment exists", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "paperclip-google-cloud-env-test-"))); roots.push(root);
     mocks.root.mockReturnValue(root);

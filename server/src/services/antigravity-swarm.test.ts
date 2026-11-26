@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { classifyContinuationFailure } from "./recovery/service.js";
 import { NativeProviderTerminalFailure } from "../vendor/paperclip-runner/index.js";
 import { nativeSessionFailureDisposition, nativeSessionFailureSourceCode, nativeStartupFailureMessage } from "./native-runtime/native-session-executor.js";
@@ -7,6 +7,15 @@ import { antigravitySwarmRefusal, isAntigravitySwarmExecution, requestedAntigrav
 const antigravity = { adapterType: "paperclip_runner", adapterConfig: { provider: "acpx", acpxAgent: "antigravity", model: "gemini-3.8-flash-low" } };
 
 describe("trusted /swarm for Google Antigravity", () => {
+  it("refuses the native CLI swarm when the deployment has disabled Antigravity Google sign-in", () => {
+    vi.stubEnv("PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED", "false");
+    try {
+      expect(antigravitySwarmRefusal({ enabled: true, agent: antigravity, workMode: "standard" })).toMatch(/disabled on this Paperclip deployment/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("is available only when the experimental flag is on, for a local Antigravity assignee", () => {
     expect(antigravitySwarmRefusal({ enabled: true, agent: antigravity })).toBeNull();
     expect(antigravitySwarmRefusal({ enabled: false, agent: antigravity })).toMatch(/not turned on/);

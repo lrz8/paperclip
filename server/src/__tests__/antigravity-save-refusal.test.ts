@@ -100,7 +100,11 @@ describePostgres("Google Antigravity connection refusal at agent save", () => {
       res.status(error.status ?? 500).json({ error: error.message, details: error.details });
     });
   });
-  afterEach(() => { vi.restoreAllMocks(); vi.stubEnv(ANTIGRAVITY_CANDIDATE_ADMISSION_ENV, undefined); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.stubEnv(ANTIGRAVITY_CANDIDATE_ADMISSION_ENV, undefined);
+    vi.stubEnv("PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED", undefined);
+  });
   afterAll(async () => {
     await database?.cleanup(); vi.unstubAllEnvs();
     if (home) await rm(home, { recursive: true, force: true });
@@ -137,6 +141,22 @@ describePostgres("Google Antigravity connection refusal at agent save", () => {
     }).returning();
     return pluginEnv!;
   }
+
+  it("refuses a managed subscription on the local host when disabled, and still saves an API-key connection", async () => {
+    vi.stubEnv("PAPERCLIP_ANTIGRAVITY_GOOGLE_SIGN_IN_ENABLED", "false");
+    const subscription = await saveGoogleConnection("subscription");
+    const refused = await request(app).patch(`/api/agents/${agent.id}`).send({ runtimeConfig: { aiConnection: subscription } });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.details).toMatchObject({ code: "antigravity_google_sign_in_disabled" });
+    expect((await readAgent()).runtimeConfig.aiConnection).toBeUndefined();
+
+    const apiKey = await saveGoogleConnection("api_key");
+    const saved = await request(app).patch(`/api/agents/${agent.id}`).send({ runtimeConfig: { aiConnection: apiKey } });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect((await readAgent()).runtimeConfig.aiConnection).toMatchObject(apiKey);
+    expect(allocate).not.toHaveBeenCalled();
+    expect(probe).not.toHaveBeenCalled();
+  });
 
   it("refuses Google sign-in on a cloud environment while pending even with a linux-x64 grant", async () => {
     release.pending = true;

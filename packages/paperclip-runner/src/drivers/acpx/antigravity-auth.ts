@@ -21,6 +21,7 @@ const MAX_USED_CODE_DIGESTS = 1024;
 const REDIRECT_LOOPBACK_TIMEOUT_MS = 5_000;
 const DISALLOWED_PRINTABLE_ASCII = /[^\x21-\x7E]/;
 const LOGIN_ERROR = "Google sign-in did not complete. Start sign-in again.";
+const RUNTIME_MISSING = "Google sign-in needs the pinned Antigravity runtime on the Paperclip server. Ask your administrator to install it.";
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const verifiedCredentials = new Map<string, { credential: string; accountEmail: string }>();
 const activeBrowserHomes = new Set<string>();
@@ -182,8 +183,13 @@ export function startAntigravityBrowserLogin(home: string): AntigravityBrowserLo
     let timeout: ReturnType<typeof setTimeout> | undefined, failPending: ((error: Error) => void) | undefined;
     try {
       await checkAntigravityPrivateHome(home);
-      const installation = await verifyNativeAcpxInstallation(antigravityNativeDistributionSpec());
-      lease = await installation.openCommand({ signal: controller.signal });
+      try {
+        const installation = await verifyNativeAcpxInstallation(antigravityNativeDistributionSpec());
+        lease = await installation.openCommand({ signal: controller.signal });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") state.error = RUNTIME_MISSING;
+        throw error;
+      }
       const environment = await antigravityPrivateEnvironment(home);
       if (controller.signal.aborted) throw new Error(LOGIN_ERROR);
       child = lease.spawn([], { cwd: home, stdio: "pipe", detached: process.platform !== "win32", env: environment }) as ChildProcessWithoutNullStreams;
@@ -347,7 +353,7 @@ export function startAntigravityBrowserLogin(home: string): AntigravityBrowserLo
       if (controller.signal.aborted) throw new Error(LOGIN_ERROR);
       state.outcome = "success";
     } catch {
-      state.outcome = "failure"; state.error = LOGIN_ERROR;
+      state.outcome = "failure"; state.error ??= LOGIN_ERROR;
     } finally {
       state.submitRedirect = undefined;
       if (timeout) clearTimeout(timeout);

@@ -1,4 +1,5 @@
 import { healthApi } from "@/api/health";
+import { useTranslation } from "@/i18n";
 import { aiConnectionsApi } from "@/api/ai-connections";
 import { useLocalAiLogin } from "../ai-connections/useLocalAiLogin";
 import type { AiConnectionBinding, AiConnectionLoginIntent } from "@paperclipai/shared";
@@ -74,6 +75,7 @@ export function AgentProviderConnection({
     onComplete: (result: { connectionId: string; grantId: string; method: "subscription" | "api_key" }) => void;
   };
 }) {
+  const { t } = useTranslation();
   const needsHealth = localEnvironment || adapterType === "antigravity_runtime";
   const health = useQuery({ queryKey: queryKeys.health, queryFn: healthApi.get, enabled: needsHealth });
   // Read health through the shared view: a transient failure keeps the saved
@@ -81,9 +83,10 @@ export function AgentProviderConnection({
 
   const healthView = useQueryView(health);
   const localAiLoginSupported = Boolean(health.data?.localAiLoginSupported ?? health.data?.deploymentMode === "local_trusted");
-  const hostedGoogleAiLoginSupported = Boolean(health.data?.hostedGoogleAiLoginSupported);
+  const hostedGoogleAiLoginSupported = health.data?.hostedGoogleAiLoginSupported;
+  const googleSignInDisabled = adapterType === "antigravity_runtime" && hostedGoogleAiLoginSupported === false;
   const canUseLocalLogin = adapterType === "antigravity_runtime"
-    ? (hostedGoogleAiLoginSupported || (localEnvironment && localAiLoginSupported))
+    ? (hostedGoogleAiLoginSupported ?? (localEnvironment && localAiLoginSupported))
     : (localEnvironment && localAiLoginSupported);
   // Keep the loopback redirect paste option available whenever relay sign-in is
   // supported, including private/trusted-host servers where `localAiLoginSupported`
@@ -430,7 +433,7 @@ export function AgentProviderConnection({
               <LocalProviderLoginInstructions adapterType={adapterType} hostedRedirect={googleHostedRedirect} login={{ ...localLogin, retry: () => { setError(null); localLogin.retry(); } }} />
             ) : (
               <p className="text-sm text-muted-foreground">
-                {storedLogin.data
+                {googleSignInDisabled ? t("connections.antigravityGoogleSignInDisabled") : storedLogin.data
                   ? "Use your saved Claude subscription for this agent."
                   : canLogin
                     ? "Use the existing provider connection for this environment."
