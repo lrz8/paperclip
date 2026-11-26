@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
@@ -120,6 +121,7 @@ function ProjectItem({
   leaving = false,
   isDragging = false,
 }: ProjectItemProps) {
+  const { t } = useTranslation();
   const routeRef = projectRouteRef(project);
   const { summary: externalObjectsSummary } = useProjectExternalObjectSummary(project.id);
 
@@ -143,7 +145,7 @@ function ProjectItem({
     >
       <ProjectTile color={project.color ?? null} icon={project.icon ?? null} size="xs" />
       <span className="flex-1 truncate">{project.name}</span>
-      {project.visibility === "private" ? <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label="Private project" /> : null}
+      {project.visibility === "private" ? <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label={t("projects.private")} /> : null}
       <ExternalObjectStatusSummary summary={externalObjectsSummary} compact />
       {project.pauseReason === "budget" ? <BudgetSidebarMarker title="Project paused by budget" /> : null}
     </NavLink>
@@ -235,6 +237,7 @@ function SortableProjectItem(props: ProjectItemProps) {
 }
 
 export function SidebarProjects() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { openNewProject } = useDialogActions();
@@ -388,7 +391,7 @@ export function SidebarProjects() {
 
   return (
     <SidebarSection
-      label="Projects"
+      label={t("nav.projects")}
       collapsible={{ open, onOpenChange: setOpen }}
       headerAction={{
         ariaLabel: "New project",

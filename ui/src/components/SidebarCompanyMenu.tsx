@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -159,6 +160,7 @@ export function SidebarCompanyMenu({ showChevron, ...props }: SidebarCompanyMenu
 }
 
 function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = true }: SidebarCompanyMenuProps) {
+  const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
   const { companies, selectedCompany, setSelectedCompanyId, companyListUnavailable, retryCompanies } =
@@ -302,7 +304,7 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
       >
         <FlyoutHeader className="flex h-(--organization-popover-header-height) items-center justify-between gap-2 px-3.5">
           <DropdownMenuLabel className="p-0 text-(length:--text-compact) font-semibold text-foreground">
-            Organizations
+            {t("nav.organizations")}
           </DropdownMenuLabel>
           <button
             type="button"
@@ -313,7 +315,7 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
             }}
             className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            {isEditingOrder ? "Done" : "Edit"}
+            {isEditingOrder ? t("common.done") : t("common.edit")}
           </button>
         </FlyoutHeader>
         <FlyoutOptions className="flex max-h-96 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2 pt-1">
@@ -344,7 +346,7 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
             // offer the way back.
             companyListUnavailable ? (
               <>
-                <DropdownMenuItem disabled>Couldn&apos;t load organizations</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("nav.noOrganizationLoad")}</DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(event) => {
                     // Keep the menu open so the result of the retry is visible.
@@ -353,11 +355,11 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
                   }}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Try again
+                  {t("common.tryAgain")}
                 </DropdownMenuItem>
               </>
             ) : (
-              <DropdownMenuItem disabled>No organizations</DropdownMenuItem>
+              <DropdownMenuItem disabled>{t("nav.noOrganizations")}</DropdownMenuItem>
             )
           ) : null}
         </FlyoutOptions>
@@ -371,7 +373,7 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
               <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
                 <Plus className="size-4" />
               </span>
-              <TruncatedText className="min-w-0 flex-1 truncate">Create organization</TruncatedText>
+              <TruncatedText className="min-w-0 flex-1 truncate">{t("nav.createOrganization")}</TruncatedText>
             </DropdownMenuItem>
           )}
           {showInvitePeople ? (
@@ -405,7 +407,7 @@ function BuiltinCompanyMenu({ open: controlledOpen, onOpenChange, showChevron = 
                 <LogOut className="size-4" />
               </span>
               <TruncatedText className="min-w-0 flex-1 truncate">
-                {signOutMutation.isPending ? "Signing out..." : "Sign out"}
+                {signOutMutation.isPending ? t("account.signingOut") : t("account.signOut")}
               </TruncatedText>
             </DropdownMenuItem>
           ) : null}

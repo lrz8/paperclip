@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { PERSONAL_ARCHIVE_QUERY_KEY } from "@/lib/inboxArchiveCache";
 import { QueryErrorState } from "./QueryView";
 import { ISSUE_SORT_FIELDS, sortIssues, type IssueSort, type IssueSortField } from "../lib/issue-sort";
@@ -535,6 +536,7 @@ function IssueSearchInput({
   value: string;
   onDebouncedChange?: (search: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draftValue, setDraftValue] = useState(value);
   const lastCommittedValueRef = useRef(value);
 
@@ -581,9 +583,9 @@ function IssueSearchInput({
             e.currentTarget.blur();
           }
         }}
-        placeholder="Search tasks..."
+        placeholder={t("tasks.searchDots")}
         className="pl-7 text-xs sm:text-sm"
-        aria-label="Search tasks"
+        aria-label={t("tasks.search")}
         data-page-search-target="true"
       />
     </div>
@@ -599,6 +601,7 @@ function SubIssueProgressSummaryStrip({
   issueLinkState?: unknown;
   parentIssueIdForCostSummary?: string;
 }) {
+  const { t } = useTranslation();
   const target = summary.target;
   const targetIssue = target?.issue ?? null;
   const targetPathId = targetIssue?.identifier ?? targetIssue?.id ?? "";
@@ -629,13 +632,13 @@ function SubIssueProgressSummaryStrip({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span className="font-medium text-foreground">
-              {summary.doneCount}/{summary.totalCount} done
+              {summary.doneCount}/{summary.totalCount} {t("status.doneLower")}
             </span>
             <span className="text-muted-foreground">
-              {summary.inProgressCount} in progress
+              {summary.inProgressCount} {t("status.inProgressLower")}
             </span>
             <span className="text-muted-foreground">
-              {summary.blockedCount} blocked
+              {summary.blockedCount} {t("status.blockedLower")}
             </span>
             {showCostSummary && (
               <>
@@ -657,7 +660,7 @@ function SubIssueProgressSummaryStrip({
           </div>
           <div
             role="progressbar"
-            aria-label="Sub-tasks completion progress"
+            aria-label={t("tasks.subtaskProgress")}
             aria-valuemin={0}
             aria-valuenow={summary.doneCount}
             aria-valuemax={summary.totalCount}
@@ -694,11 +697,11 @@ function SubIssueProgressSummaryStrip({
               </Link>
             </>
           ) : summary.totalCount === 0 ? (
-            <div className="text-sm font-medium text-foreground">No active sub-tasks</div>
+            <div className="text-sm font-medium text-foreground">{t("tasks.noActiveSubtasks")}</div>
           ) : summary.doneCount === summary.totalCount ? (
-            <div className="text-sm font-medium text-foreground">All sub-tasks done</div>
+            <div className="text-sm font-medium text-foreground">{t("tasks.subtasksDone")}</div>
           ) : (
-            <div className="text-sm font-medium text-foreground">No actionable sub-tasks</div>
+            <div className="text-sm font-medium text-foreground">{t("tasks.noActionableSubtasks")}</div>
           )}
         </div>
       </div>
@@ -756,6 +759,7 @@ function StreamlinedIssuesList({
   toolbarPresentation = "legacy",
   onUpdateIssue,
 }: IssuesListProps) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1874,12 +1878,12 @@ function StreamlinedIssuesList({
         controls={(
           <>
           {/* View mode toggle */}
-          <div className="flex items-center border border-border rounded-md overflow-hidden mr-1" role="group" aria-label="View mode">
+          <div className="flex items-center border border-border rounded-md overflow-hidden mr-1" role="group" aria-label={t("tasks.viewMode")}>
             <button
               className={`flex h-8 w-8 items-center justify-center transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => updateView({ viewMode: "list" })}
-              title="List view"
-              aria-label="List view"
+              title={t("tasks.listView")}
+              aria-label={t("tasks.listView")}
               aria-pressed={viewState.viewMode === "list"}
             >
               <List className="h-3.5 w-3.5" />
@@ -1887,8 +1891,8 @@ function StreamlinedIssuesList({
             <button
               className={`flex h-8 w-8 items-center justify-center transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => updateView({ viewMode: "board" })}
-              title="Board view"
-              aria-label="Board view"
+              title={t("tasks.boardView")}
+              aria-label={t("tasks.boardView")}
               aria-pressed={viewState.viewMode === "board"}
             >
               <SquareKanban className="h-3.5 w-3.5" />
@@ -1940,7 +1944,7 @@ function StreamlinedIssuesList({
                       "h-8 shrink-0 gap-1.5 px-2",
                       viewState.boardColumnPageSize !== KANBAN_COLUMN_DEFAULT_PAGE_SIZE && "bg-accent",
                     )}
-                    title="Cards per column"
+                    title={t("tasks.cardsPerColumn")}
                   >
                     <ListCollapse className="h-3.5 w-3.5" />
                     <span className="min-w-4 text-xs tabular-nums">{viewState.boardColumnPageSize}</span>
@@ -1960,7 +1964,7 @@ function StreamlinedIssuesList({
                         )}
                         onClick={() => updateView({ boardColumnPageSize: pageSize })}
                       >
-                        <span>{pageSize} per column</span>
+                        <span>{pageSize} {t("tasks.perColumn")}</span>
                         {viewState.boardColumnPageSize === pageSize && <Check className="h-3.5 w-3.5" />}
                       </button>
                     ))}
@@ -1978,7 +1982,7 @@ function StreamlinedIssuesList({
                   boardColumnPageSize: KANBAN_COLUMN_DEFAULT_PAGE_SIZE,
                 })}
                 disabled={!boardDensityCustomized}
-                title="Reset board density"
+                title={t("tasks.resetDensity")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
@@ -1992,7 +1996,7 @@ function StreamlinedIssuesList({
             showDateGroupSeparators={viewState.showDateGroupSeparators}
             onToggleDateGroupSeparators={(enabled) => updateView({ showDateGroupSeparators: enabled })}
             onResetColumns={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
-            title="Choose which task columns stay visible"
+            title={t("tasks.chooseColumns")}
             iconOnly
             rowPresentation={rowPresentation}
           />
@@ -2018,7 +2022,7 @@ function StreamlinedIssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Sort">
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title={t("tasks.sort")}>
                   <ArrowUpDown className="h-3.5 w-3.5" />
                 </Button>
               </PopoverTrigger>
@@ -2065,7 +2069,7 @@ function StreamlinedIssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Group">
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title={t("tasks.group")}>
                   <Layers className="h-3.5 w-3.5" />
                 </Button>
               </PopoverTrigger>
@@ -2104,11 +2108,11 @@ function StreamlinedIssuesList({
 
       {collectionLoading && !externalObjectFilterError && <PageSkeleton variant="issues-list" collectionHeading={viewState.groupBy !== "none" ? "group"
         : viewState.showDateGroupSeparators && issueDateSeparatorField(viewState) && rowPresentation === "task" ? "date" : null} />}
-      {error ? <QueryErrorState error={error} action="load tasks" onRetry={onRetry} retrying={retrying} /> : null}
+      {error ? <QueryErrorState error={error} action={t("tasks.load")} onRetry={onRetry} retrying={retrying} /> : null}
       {externalObjectFilterError && (
         <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
-          <p>Unable to filter tasks by external status: {describeError(externalObjectFilterError).body}</p>
-          <Button variant="outline" size="sm" onClick={retryExternalObjectSummaries}>Retry external statuses</Button>
+          <p>{t("tasks.externalStatusFailed")} {describeError(externalObjectFilterError).body}</p>
+          <Button variant="outline" size="sm" onClick={retryExternalObjectSummaries}>{t("tasks.retryExternalStatus")}</Button>
         </div>
       )}
       {!searchWithinLoadedIssues && normalizedIssueSearch.length > 0 && searchedIssues.length === ISSUE_SEARCH_RESULT_LIMIT && (
@@ -2121,11 +2125,11 @@ function StreamlinedIssuesList({
           Some board columns are showing up to {ISSUE_BOARD_COLUMN_RESULT_LIMIT} tasks. Refine filters or search to reveal the rest.
         </p>
       )}
-      {hierarchy.error ? <div role="alert" className="flex items-center gap-2 text-sm text-destructive"><p>{describeError(hierarchy.error, { action: "load task hierarchy" }).body}</p><Button variant="outline" size="sm" onClick={hierarchy.refetch}>Retry hierarchy</Button></div> : null}
+      {hierarchy.error ? <div role="alert" className="flex items-center gap-2 text-sm text-destructive"><p>{describeError(hierarchy.error, { action: "load task hierarchy" }).body}</p><Button variant="outline" size="sm" onClick={hierarchy.refetch}>{t("tasks.retryHierarchy")}</Button></div> : null}
       {!collectionLoading && !error && !externalObjectFilterError && visibleListRowCount === 0 && viewState.viewMode === "list" && (
         <EmptyState
           icon={CircleDot}
-          message="No tasks match the current filters or search."
+          message={t("tasks.noMatch")}
           action={createActionLabel}
           onAction={() => openCreateIssueDialog()}
         />
@@ -2330,11 +2334,11 @@ function StreamlinedIssuesList({
                               issueBadge === "Paused" ? (
                                 <Badge variant="ghost"
                                   className={cn("ml-1.5 px-1.5 text-(length:--text-nano)", statusBadge.paused)}
-                                  aria-label="Paused"
-                                  title="Paused"
+                                  aria-label={t("status.pausedTitle")}
+                                  title={t("status.pausedTitle")}
                                 >
                                   <CircleSlash2 className="h-3 w-3" />
-                                  Paused
+                                  {t("status.pausedTitle")}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="ml-1.5 border-amber-500/40 bg-amber-500/10 px-1.5 text-(length:--text-nano) text-amber-700 dark:text-amber-300">
@@ -2345,11 +2349,11 @@ function StreamlinedIssuesList({
                             {isSuccessfulRunHandoffRequired(issue) ? (
                               <Badge variant="outline"
                                 className="ml-1.5 border-amber-400/45 bg-amber-50/60 px-1.5 text-(length:--text-nano) text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-300"
-                                aria-label="Needs next step"
-                                title="This task needs a next step"
+                                aria-label={t("tasks.nextStep")}
+                                title={t("tasks.nextStepDescription")}
                               >
                                 <CircleDot className="h-3 w-3" />
-                                Needs next step
+                                {t("tasks.nextStep")}
                               </Badge>
                             ) : null}
                           </>
@@ -2491,7 +2495,7 @@ function StreamlinedIssuesList({
                                           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
                                             <User className="h-3.5 w-3.5" />
                                           </span>
-                                          Assignee
+                                          {t("tasks.assignee")}
                                         </span>
                                       )}
                                     </button>
@@ -2504,7 +2508,7 @@ function StreamlinedIssuesList({
                                   >
                                     <input
                                       className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
-                                      placeholder="Search responsible..."
+                                      placeholder={t("tasks.responsibleSearch")}
                                       value={assigneeSearch}
                                       onChange={(e) => setAssigneeSearch(e.target.value)}
                                       autoFocus
@@ -2521,7 +2525,7 @@ function StreamlinedIssuesList({
                                           assignIssue(issue.id, null, null);
                                         }}
                                       >
-                                        No responsible
+                                        {t("tasks.noResponsible")}
                                       </button>
                                       {currentUserId && (
                                         <button
@@ -2536,7 +2540,7 @@ function StreamlinedIssuesList({
                                           }}
                                         >
                                           <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                          <span>Me</span>
+                                          <span>{t("common.currentUser")}</span>
                                         </button>
                                       )}
                                       {(agents ?? [])

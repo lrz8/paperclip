@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { companyProjectsQuery } from "@/lib/company-projects-query";
 import { useAccountIdentity } from "@/api/companies-query";
 import { AgentIdentity } from "../components/AgentIdentity";
@@ -97,6 +98,7 @@ export function derivePausedAgentBanner(agents: Agent[] | undefined): PausedAgen
 }
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const designSandbox = useDesignSandbox();
   const { selectedCompanyId, companies } = useCompany();
   const { openOnboarding } = useDialogActions();
@@ -145,8 +147,8 @@ export function Dashboard() {
   useAgentlessOnboardingAutoOpen();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("nav.dashboard") }]);
+  }, [setBreadcrumbs, t]);
 
   const dashboardQueryKey = queryKeys.dashboard(selectedCompanyId!);
   const sharedDashboard = useSharedPollingQuery({
@@ -299,14 +301,14 @@ export function Dashboard() {
       return (
         <EmptyState
           icon={LayoutDashboard}
-          message="Welcome to Paperclip. Set up your first organization and agent to get started."
+          message={t("dashboard.welcome")}
           action="Get Started"
           onAction={openOnboarding}
         />
       );
     }
     return (
-      <EmptyState icon={LayoutDashboard} message="Create or select an organization to view the dashboard." />
+      <EmptyState icon={LayoutDashboard} message={t("dashboard.selectOrganization")} />
     );
   }
 
@@ -320,7 +322,7 @@ export function Dashboard() {
       <QueryErrorState
         size="page"
         error={dashboardView.error}
-        action="load the dashboard"
+        action={t("dashboard.load")}
         onRetry={dashboardView.retry}
         retrying={dashboardView.isFetching}
       />
@@ -353,20 +355,20 @@ export function Dashboard() {
             </Button>
           }
         >
-          Agents from an organization import arrive paused as a safety default. Resume them so assigned tasks can start.
+          {t("dashboard.importPaused")}
         </InlineBanner>
       ) : pausedBanner?.kind === "all-paused" ? (
         <InlineBanner
           tone="warning"
           icon={PauseCircle}
-          title="All agents in this organization are paused — nothing will run."
+          title={t("dashboard.allAgentsPaused")}
           actions={
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/agents">Review agents</Link>
+              <Link to="/agents">{t("dashboard.reviewAgents")}</Link>
             </Button>
           }
         >
-          Resume at least one agent to let assigned tasks start.
+          {t("dashboard.resumeAgent")}
         </InlineBanner>
       ) : null}
 
@@ -375,14 +377,14 @@ export function Dashboard() {
           <div className="flex items-center gap-2.5">
             <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents.
+              {t("dashboard.noAgents")}
             </p>
           </div>
           <button
             onClick={() => openOnboarding({ initialStep: 3, companyId: selectedCompanyId! })}
             className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
           >
-            Create one here
+            {t("dashboard.createOne")}
           </button>
         </div>
       )}
@@ -405,7 +407,7 @@ export function Dashboard() {
                 </div>
               </div>
               <Link to="/costs" className="text-sm underline underline-offset-2 text-red-900 dark:text-red-100">
-                Open budgets
+                {t("dashboard.openBudgets")}
               </Link>
             </div>
           ) : null}
@@ -415,13 +417,13 @@ export function Dashboard() {
               appearance={designSandbox ? "card" : "plain"}
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label="Agents Enabled"
+              label={t("dashboard.agentsEnabled")}
               to="/agents"
               description={
                 <span>
-                  {data.agents.running} running{", "}
-                  {data.agents.paused} paused{", "}
-                  {data.agents.error} errors
+                  {data.agents.running} {t("status.running")}{", "}
+                  {data.agents.paused} {t("status.paused")}{", "}
+                  {data.agents.error} {t("status.errors")}
                 </span>
               }
             />
@@ -429,12 +431,12 @@ export function Dashboard() {
               appearance={designSandbox ? "card" : "plain"}
               icon={CircleDot}
               value={data.tasks.inProgress}
-              label="Tasks In Progress"
+              label={t("dashboard.tasksActive")}
               to="/issues"
               description={
                 <span>
-                  {data.tasks.open} open{", "}
-                  {data.tasks.blocked} blocked
+                  {data.tasks.open} {t("status.open")}{", "}
+                  {data.tasks.blocked} {t("status.blockedLower")}
                 </span>
               }
             />
@@ -442,7 +444,7 @@ export function Dashboard() {
               appearance={designSandbox ? "card" : "plain"}
               icon={DollarSign}
               value={formatCents(data.costs.monthSpendCents)}
-              label="Month Spend"
+              label={t("dashboard.monthSpend")}
               to="/costs"
               description={
                 <span>
@@ -456,7 +458,7 @@ export function Dashboard() {
               appearance={designSandbox ? "card" : "plain"}
               icon={ShieldCheck}
               value={data.pendingApprovals + data.budgets.pendingApprovals}
-              label="Pending Approvals"
+              label={t("dashboard.pendingApprovals")}
               to="/approvals"
               description={
                 <span>
@@ -471,19 +473,19 @@ export function Dashboard() {
           <SmokeLabDashboardCard companyId={selectedCompanyId!} />
 
           <div className={cn("grid grid-cols-2 gap-4", SHOW_TASK_PRIORITY_UI ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
-            <ChartCard title="Run Activity" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.runActivity")} subtitle="Last 14 days">
               <RunActivityChart activity={data.runActivity} />
             </ChartCard>
             {/* PAP-411: "Tasks by Priority" chart hidden behind SHOW_TASK_PRIORITY_UI. */}
             {SHOW_TASK_PRIORITY_UI && (
-              <ChartCard title="Tasks by Priority" subtitle="Last 14 days">
+              <ChartCard title={t("dashboard.tasksByPriority")} subtitle="Last 14 days">
                 <PriorityChart issues={issues ?? []} />
               </ChartCard>
             )}
-            <ChartCard title="Tasks by Status" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.tasksByStatus")} subtitle="Last 14 days">
               <IssueStatusChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Success Rate" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.successRate")} subtitle="Last 14 days">
               <SuccessRateChart activity={data.runActivity} />
             </ChartCard>
           </div>
@@ -501,7 +503,7 @@ export function Dashboard() {
             {recentActivity.length > 0 && (
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Recent Activity
+                  {t("dashboard.recentActivity")}
                 </h3>
                 <Card className="@container block py-0 divide-y divide-border overflow-hidden">
                   {designSandbox ? <ActivityList events={recentActivity} agentMap={agentMap} userProfileMap={userProfileMap} entityNameMap={entityNameMap} entityTitleMap={entityTitleMap} rowClassName={event => animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined} /> : recentActivity.map((event) => (
@@ -522,11 +524,11 @@ export function Dashboard() {
             {/* Recent Tasks */}
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Recent Tasks
+                {t("nav.recentTasks")}
               </h3>
               {recentIssues.length === 0 ? (
                 <Card className="block p-4">
-                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                  <p className="text-sm text-muted-foreground">{t("tasks.none")}</p>
                 </Card>
               ) : (
                 designSandbox ? <Card className="block overflow-hidden py-0">

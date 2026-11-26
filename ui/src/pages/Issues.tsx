@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { PERSONAL_ARCHIVE_QUERY_KEY } from "@/lib/inboxArchiveCache";
 import { companyProjectsQuery } from "@/lib/company-projects-query";
 import { QueryErrorState, useQueryView } from "@/components/QueryView";
@@ -111,6 +112,7 @@ export function Issues() {
 }
 
 function StreamlinedTasks() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedCompanyId } = useCompany();
@@ -158,9 +160,9 @@ function StreamlinedTasks() {
         toolbarContext={(
           <div className="flex min-w-0 items-center gap-2">
             {viewsMenu}
-            <Button size="sm" variant="outline" aria-label="New Task" onClick={() => openNewIssue()}>
+            <Button size="sm" variant="outline" aria-label={t("tasks.new")} onClick={() => openNewIssue()}>
               <Plus className="h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">New Task</span>
+              <span className="hidden sm:inline">{t("tasks.new")}</span>
             </Button>
           </div>
         )}
@@ -176,6 +178,7 @@ function OrganizationIssues({
   initialStatuses,
   archiveView,
 }: { toolbarContext?: ReactNode; initialStatuses?: string[]; archiveView?: "archived" | "include" } = {}) {
+  const { t } = useTranslation();
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
   const issuesPresentation = resolveIssuesPresentation(streamlinedUiEnabled);
   const { selectedCompanyId } = useCompany();
@@ -277,8 +280,8 @@ function OrganizationIssues({
   );
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Tasks" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("nav.tasks") }]);
+  }, [setBreadcrumbs, t]);
 
   const issuePageSize = workspaceIdFilter ? WORKSPACE_FILTER_ISSUE_LIMIT : ISSUES_PAGE_SIZE;
 
@@ -347,17 +350,17 @@ function OrganizationIssues({
       <EmptyState
         icon={CircleDot}
         message={streamlinedUiEnabled
-          ? "Select an organization to view tasks."
-          : "Select a company to view tasks."}
+          ? t("tasks.selectOrganization")
+          : t("tasks.selectCompany")}
       />
     );
   }
 
   if (archiveView === "archived" && !userId) return identitySettled
-    ? <EmptyState icon={CircleDot} message="Sign in to view archived tasks." />
-    : <p role="status">Loading archived tasks…</p>;
+    ? <EmptyState icon={CircleDot} message={t("tasks.signInArchived")} />
+    : <p role="status">{t("tasks.archivedLoading")}</p>;
 
-  if (issuesView.kind === "error") return <QueryErrorState size="page" error={issuesView.error} action="load tasks" onRetry={issuesView.retry} retrying={issuesView.isFetching} />;
+  if (issuesView.kind === "error") return <QueryErrorState size="page" error={issuesView.error} action={t("tasks.load")} onRetry={issuesView.retry} retrying={issuesView.isFetching} />;
 
   return (
     <IssuesList

@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { describeError } from "../api/errors";
 import { AgentIdentity } from "@/components/AgentIdentity";
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +22,7 @@ import { ANALYTICS_MASK_CLASS } from "@/lib/analytics/privacy";
 import { cn } from "@/lib/utils";
 
 export function ApprovalDetail() {
+  const { t } = useTranslation();
   const { approvalId } = useParams<{ approvalId: string }>();
   const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -69,10 +71,10 @@ export function ApprovalDetail() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Approvals", href: "/approvals" },
+      { label: t("nav.approvals"), href: "/approvals" },
       { label: approval?.id?.slice(0, 8) ?? approvalId ?? "Approval" },
     ]);
-  }, [setBreadcrumbs, approval, approvalId]);
+  }, [setBreadcrumbs, approval, approvalId, t]);
 
   const refresh = () => {
     if (!approvalId) return;
@@ -146,7 +148,7 @@ export function ApprovalDetail() {
   });
 
   if (isLoading) return <PageSkeleton variant="detail" />;
-  if (!approval) return <p className="text-sm text-muted-foreground">Approval not found.</p>;
+  if (!approval) return <p className="text-sm text-muted-foreground">{t("approval.notFound")}</p>;
 
   const payload = approval.payload as Record<string, unknown>;
   const linkedAgentId = typeof payload.agentId === "string" ? payload.agentId : null;
@@ -166,11 +168,11 @@ export function ApprovalDetail() {
         }
       : linkedAgentId
         ? {
-            label: "Open hired agent",
+            label: t("approval.openAgent"),
             to: `/agents/${linkedAgentId}`,
           }
         : {
-            label: "Back to approvals",
+            label: t("approval.back"),
             to: "/approvals",
           };
 
@@ -185,9 +187,9 @@ export function ApprovalDetail() {
                 <Sparkles className="h-3 w-3 text-green-500 dark:text-green-200 absolute -right-2 -top-1 animate-pulse" />
               </div>
               <div>
-                <p className="text-sm text-green-800 dark:text-green-100 font-medium">Approval confirmed</p>
+                <p className="text-sm text-green-800 dark:text-green-100 font-medium">{t("approval.confirmed")}</p>
                 <p className="text-xs text-green-700 dark:text-green-200/90">
-                  Requesting agent was notified to review this approval and linked tasks.
+                  {t("approval.agentNotified")}
                 </p>
               </div>
             </div>
@@ -216,7 +218,7 @@ export function ApprovalDetail() {
         <div className="text-sm space-y-1">
           {approval.requestedByAgentId && (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">Requested by</span>
+              <span className="text-muted-foreground text-xs">{t("approval.requestedBy")}</span>
               <AgentIdentity
                 agent={agents?.find((agent) => agent.id === approval.requestedByAgentId) ?? { id: approval.requestedByAgentId, name: "Agent" }}
                 size="sm"
@@ -230,7 +232,7 @@ export function ApprovalDetail() {
             onClick={() => setShowRawPayload((v) => !v)}
           >
             <ChevronRight className={`h-3 w-3 transition-transform ${showRawPayload ? "rotate-90" : ""}`} />
-            See full request
+            {t("approval.fullRequest")}
           </button>
           {showRawPayload && (
             <pre className={cn("text-xs bg-muted/40 rounded-md p-3 overflow-x-auto", ANALYTICS_MASK_CLASS)}>
@@ -238,13 +240,13 @@ export function ApprovalDetail() {
             </pre>
           )}
           {approval.decisionNote && (
-            <p className="text-xs text-muted-foreground">Decision note: {approval.decisionNote}</p>
+            <p className="text-xs text-muted-foreground">{t("approval.decisionNote")} {approval.decisionNote}</p>
           )}
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         {linkedIssues && linkedIssues.length > 0 && (
           <div className="pt-2 border-t border-border/60">
-            <p className="text-xs text-muted-foreground mb-1.5">Linked Tasks</p>
+            <p className="text-xs text-muted-foreground mb-1.5">{t("approval.linkedTasks")}</p>
             <div className="space-y-1.5">
               {linkedIssues.map((issue) => (
                 <Link
@@ -260,7 +262,7 @@ export function ApprovalDetail() {
               ))}
             </div>
             <p className="text-(length:--text-micro) text-muted-foreground mt-2">
-              Linked tasks remain open until the requesting agent follows up and closes them.
+              {t("approval.linkedDescription")}
             </p>
           </div>
         )}
@@ -273,7 +275,7 @@ export function ApprovalDetail() {
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending}
               >
-                Approve
+                {t("approval.approve")}
               </Button>
               <Button
                 variant="destructive"
@@ -281,7 +283,7 @@ export function ApprovalDetail() {
                 onClick={() => rejectMutation.mutate()}
                 disabled={rejectMutation.isPending}
               >
-                Reject
+                {t("approval.reject")}
               </Button>
             </>
           )}
@@ -297,7 +299,7 @@ export function ApprovalDetail() {
               onClick={() => revisionMutation.mutate()}
               disabled={revisionMutation.isPending}
             >
-              Request revision
+              {t("approval.revise")}
             </Button>
           )}
           {approval.status === "revision_requested" && (
@@ -307,7 +309,7 @@ export function ApprovalDetail() {
               onClick={() => resubmitMutation.mutate()}
               disabled={resubmitMutation.isPending}
             >
-              Mark resubmitted
+              {t("approval.resubmitted")}
             </Button>
           )}
           {approval.status === "rejected" && approval.type === "hire_agent" && linkedAgentId && (
@@ -321,7 +323,7 @@ export function ApprovalDetail() {
               }}
               disabled={deleteAgentMutation.isPending}
             >
-              Delete disapproved agent
+              {t("approval.deleteAgent")}
             </Button>
           )}
         </div>
@@ -354,7 +356,7 @@ export function ApprovalDetail() {
         <Textarea
           value={commentBody}
           onChange={(e) => setCommentBody(e.target.value)}
-          placeholder="Add a comment..."
+          placeholder={t("approval.addComment")}
           rows={3}
         />
         <div className="flex justify-end">
@@ -363,7 +365,7 @@ export function ApprovalDetail() {
             onClick={() => addCommentMutation.mutate()}
             disabled={!commentBody.trim() || addCommentMutation.isPending}
           >
-            {addCommentMutation.isPending ? "Posting…" : "Post comment"}
+            {addCommentMutation.isPending ? t("approval.posting") : t("approval.postComment")}
           </Button>
         </div>
       </div>

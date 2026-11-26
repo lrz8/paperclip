@@ -1,3 +1,5 @@
+import { useTranslation } from "@/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import type { AiConnectionLoginIntent } from "@paperclipai/shared";
 import { cancelAdapterLoginSession, cancelPendingAdapterLogin, matchesAdapterLoginTarget } from "./useAdapterLoginCancellation";
 import { useQueryView } from "@/components/QueryView";
@@ -126,7 +128,6 @@ import { PillGuy } from "./onboarding/PillGuy";
 import { SleepingZs } from "./onboarding/SleepingZs";
 import {
   AGENT_ARC_WIZARD_STEPS,
-  ONBOARDING_STEP_LABELS,
   ONBOARDING_WIZARD_STEPS,
   Stepper,
   agentArcStepFor,
@@ -425,6 +426,7 @@ function OnboardingWizardInner({
 }: {
   saved: Record<string, unknown> | null;
 }) {
+  const { t } = useTranslation();
   const {
     onboardingOpen,
     onboardingOptions,
@@ -1079,10 +1081,11 @@ function OnboardingWizardInner({
   // could ever apply to the current adapter and environment.
   const localLoginHealth = useQuery({ queryKey: queryKeys.health, queryFn: healthApi.get });
   const localAiLoginSupported = Boolean(localLoginHealth.data?.localAiLoginSupported ?? localLoginHealth.data?.deploymentMode === "local_trusted");
-  const hostedGoogleAiLoginSupported = Boolean(localLoginHealth.data?.hostedGoogleAiLoginSupported);
+  const hostedGoogleAiLoginSupported = localLoginHealth.data?.hostedGoogleAiLoginSupported;
+  const googleSignInDisabled = managedSubscriptionProvider === "google" && hostedGoogleAiLoginSupported === false;
   const canUseLocalLogin = Boolean(managedSubscriptionProvider) && (
     managedSubscriptionProvider === "google"
-      ? (hostedGoogleAiLoginSupported || (resolvedLoginEnvironment?.driver === "local" && localAiLoginSupported))
+      ? (hostedGoogleAiLoginSupported ?? (resolvedLoginEnvironment?.driver === "local" && localAiLoginSupported))
       : (resolvedLoginEnvironment?.driver === "local" && localAiLoginSupported)
   );
   const googleHostedRedirect: boolean | "optional" = managedSubscriptionProvider === "google" && hostedGoogleAiLoginSupported
@@ -1540,15 +1543,15 @@ function OnboardingWizardInner({
    */
   const connectSourceLabel = CONNECT_SOURCE_NAMES[adapterType] ?? adapterType;
   const connectCta: { label: string; icon: FooterPrimaryIcon; disabled: boolean } =
-    setupError ? { label: "Retry", icon: "arrow", disabled: false }
-      : retryLogin ? { label: "Retry sign-in", icon: "arrow", disabled: false } : connectProgress
-      ? { label: adapterEnvLoading ? "Testing…" : connectProgress, icon: "spinner", disabled: true }
+    setupError ? { label: t("common.retry"), icon: "arrow", disabled: false }
+      : retryLogin ? { label: t("onboarding.retrySignIn"), icon: "arrow", disabled: false } : connectProgress
+      ? { label: adapterEnvLoading ? t("onboarding.testing") : connectProgress, icon: "spinner", disabled: true }
       : (connectPhase === "ready" || connectPhase === "waiting") && submitLoginCode
-      ? { label: "Submit code", icon: "arrow", disabled: false }
+      ? { label: t("onboarding.submitCode"), icon: "arrow", disabled: false }
       : connectPhase === "waiting"
-      ? { label: adapterType === "codex_local" ? "Waiting for auth…" : "Waiting for code…", icon: "spinner", disabled: true }
+      ? { label: adapterType === "codex_local" ? t("onboarding.waitingAuth") : t("onboarding.waitingCode"), icon: "spinner", disabled: true }
       : connectPhase === "connecting"
-        ? { label: "Connecting", icon: "spinner", disabled: true }
+        ? { label: t("onboarding.connecting"), icon: "spinner", disabled: true }
         : connectPhase === "ready"
           ? connectStepNeedsLogin
             ? {
@@ -1557,14 +1560,14 @@ function OnboardingWizardInner({
                 disabled: !connectAuthUrl,
               }
             : {
-                label: "Connect",
+                label: t("onboarding.connect"),
                 icon: "arrow",
                 disabled:
                   !connectStepReady || connectStepLoggingIn || (credentialMode === "api" && !apiKey.trim() && !selectedApiKey && !restoredApiCredential && !managedBindingForStep()),
               }
           : // Nothing is chosen on arrival, and the row is what chooses. Until
             // it has been answered the button has nothing to do.
-            { label: "Next", icon: "arrow", disabled: true };
+            { label: t("common.next"), icon: "arrow", disabled: true };
 
   function unwindConnectStep() {
     localLogin.cancel();
@@ -2811,6 +2814,7 @@ function OnboardingWizardInner({
           className="fixed inset-0 z-50 flex"
           onKeyDown={handleKeyDown}
         >
+          <div className="absolute right-4 top-4 z-10"><LanguageSwitcher /></div>
           {/* Form column — the wizard opens directly on step 1, so there is no
               front-door choice ahead of it, and it fills the width on every
               step (the mission step's half-width split is gone). */}
@@ -2867,7 +2871,7 @@ function OnboardingWizardInner({
                 <Stepper
                   step={onboardingStepPositionFor(step)}
                   total={ONBOARDING_WIZARD_STEPS.length}
-                  labels={ONBOARDING_STEP_LABELS}
+                  labels={[t("onboarding.nameOrganization"), t("onboarding.firstAgent"), t("onboarding.connectModel"), t("onboarding.review")]}
                   canJumpToStep={(target) =>
                     canJumpToOnboardingStep({
                       targetStep: ONBOARDING_WIZARD_STEPS[target - 1]!,
@@ -2956,12 +2960,12 @@ function OnboardingWizardInner({
                       title={
                         <motion.span key={step} {...titleSwapMotion} className="inline-block">
                           {step === 1
-                            ? "What is the name of your organization?"
+                            ? t("onboarding.orgQuestion")
                             : step === 3
-                              ? "Create your first agent"
+                              ? t("onboarding.firstAgent")
                               : step === 4
-                                ? "Connect a model"
-                                : "Let's get started..."}
+                                ? t("onboarding.connectModel")
+                                : t("onboarding.getStarted")}
                         </motion.span>
                       }
                     />
@@ -3010,11 +3014,11 @@ function OnboardingWizardInner({
               {step === 1 && (
                 <motion.div key="step-1" {...stepContentMotion} exit={stepHandoff ? stepContentMotion.exit : undefined} className="mx-auto flex w-full flex-col gap-9">
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="onboarding-company-name">Name</Label>
+                    <Label htmlFor="onboarding-company-name">{t("common.name")}</Label>
                     <Input
                       id="onboarding-company-name"
                       className="h-(--sz-44px) rounded-lg border-transparent bg-muted shadow-none dark:bg-muted"
-                      placeholder="e.g. Northwind Labs"
+                      placeholder={t("onboarding.orgExample")}
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       onKeyDown={(e) => {
@@ -3038,7 +3042,7 @@ function OnboardingWizardInner({
               {step === 3 && (
                 <motion.div key="step-3" {...stepContentMotion} exit={stepHandoff ? stepContentMotion.exit : undefined} className="mx-auto flex w-full flex-col gap-9">
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="onboarding-agent-name">Agent name</Label>
+                    <Label htmlFor="onboarding-agent-name">{t("onboarding.agentName")}</Label>
                     {/*
                       Filled, not outlined, and the column's full width — the
                       same field the naming step before the hand-off draws.
@@ -3051,7 +3055,7 @@ function OnboardingWizardInner({
                     <Input
                       id="onboarding-agent-name"
                       className="h-(--sz-44px) rounded-lg border-transparent bg-muted shadow-none dark:bg-muted"
-                      placeholder="e.g. Chief of staff"
+                      placeholder={t("onboarding.agentExample")}
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       onKeyDown={(e) => {
@@ -3071,7 +3075,7 @@ function OnboardingWizardInner({
                 <motion.div key="step-4" {...stepContentMotion} exit={stepHandoff ? stepContentMotion.exit : undefined} className="space-y-8">
                   <div>
                     <ModelSourceTiles
-                      label="Model source"
+                      label={t("onboarding.modelSource")}
                       sources={recommendedAdapters.map((opt) => ({
                         id: opt.type,
                         label: CONNECT_SOURCE_NAMES[opt.type] ?? opt.label,
@@ -3104,8 +3108,7 @@ function OnboardingWizardInner({
 
                     {adapterRegistryLoaded && recommendedAdapters.length === 0 && (
                       <p role="status" className="text-sm text-muted-foreground">
-                        Claude and Codex are unavailable on this instance. Ask an administrator to enable one,
-                        or exit setup and choose New Agent on the Agents page to use another provider.
+                        {t("onboarding.providersDisabled")}
                       </p>
                     )}
 
@@ -3133,8 +3136,8 @@ function OnboardingWizardInner({
                     >
                       <div className="-ml-3 mt-1">
                         <CredentialModeLink mode={credentialMode} onChange={setCredentialMode} />
-                        {savedKeys.options.length > 0 && <p className="px-3 text-sm text-muted-foreground">{savedKeys.options.length} saved API {savedKeys.options.length === 1 ? "key available" : "keys available"}.</p>}
-                        {credentialMode === "subscription" && authSignalStatus === "present" && <p className="px-3 text-sm text-muted-foreground">An existing provider connection is available.</p>}
+                        {savedKeys.options.length > 0 && <p className="px-3 text-sm text-muted-foreground">{t("onboarding.savedKey", { count: savedKeys.options.length })}</p>}
+                        {credentialMode === "subscription" && authSignalStatus === "present" && <p className="px-3 text-sm text-muted-foreground">{t("onboarding.existingConnection")}</p>}
                       </div>
                     </motion.div>
                   </div>
@@ -3193,8 +3196,8 @@ function OnboardingWizardInner({
                           setApiKey("");
                         }} />}
                         {!selectedApiKey && !hasGatewaySelection && !connectionModels && <OnboardingCardField
-                          label="API key"
-                          placeholder="Enter API key here"
+                          label={t("onboarding.apiKey")}
+                          placeholder={t("onboarding.enterApiKey")}
                           masked
                           // The card is the answer to the tile just pressed, so
                           // the field is unambiguously the next thing. Carried
@@ -3207,14 +3210,14 @@ function OnboardingWizardInner({
                           }}
                           onSubmit={() => handleConnectStepPrimary()}
                         />}
-                        {managedProvider && !selectedApiKey && !hasGatewaySelection && !connectionModels && <p className="text-xs text-muted-foreground">This will be your default {CONNECT_SOURCE_NAMES[adapterType] ?? managedProvider} account.</p>}
+                        {managedProvider && !selectedApiKey && !hasGatewaySelection && !connectionModels && <p className="text-xs text-muted-foreground">{t("onboarding.defaultAccount", { provider: CONNECT_SOURCE_NAMES[adapterType] ?? managedProvider })}</p>}
                         {hasGatewaySelection && (gatewayLookupFailed ? <>
-                          <p role="alert" className="text-sm text-destructive">Your saved gateway connection could not be loaded. Retry to choose a model and connect your agent.</p>
+                          <p role="alert" className="text-sm text-destructive">{t("onboarding.gatewayConnectionFailure")}</p>
                           <Button type="button" variant="outline" disabled={loading || adapterEnvLoading} onClick={() => { void connectionModelState.refresh(); }}>
-                            Retry loading connection
+                            {t("onboarding.reloadConnection")}
                           </Button>
                         </> : <p role="status" className="text-sm text-muted-foreground">{connectionModelState.refreshing
-                          ? "Loading your saved gateway connection…"
+                          ? t("onboarding.gatewayLoading")
                           : "Gateway connection saved. Choose a model, then Connect to test it and finish setting up your agent."}</p>)}
                         {connectionModels && <ModelDropdown models={connectionModels.models} value={model}
                           onChange={setModel} open={modelOpen} onOpenChange={setModelOpen}
@@ -3224,7 +3227,7 @@ function OnboardingWizardInner({
                           setGatewayConnection(undefined);
                           setSelectedSavedKey({ companyId: createdCompanyId!, envKey: apiKeyEnvKeyFor(adapterType), id: "" });
                           setModel("");
-                        }}>Use a different API key</Button>}
+                        }}>{t("onboarding.changeApiKey")}</Button>}
                       </OnboardingLoginCard>
                     ) : connectStepNeedsLogin &&
                       createdCompanyId &&
@@ -3333,13 +3336,13 @@ function OnboardingWizardInner({
                     ) : hasSavedSubscription || localLogin.status === "ready" ? null : connectStepHasNoSandbox ? (
                       canUseLocalLogin && managedProvider ? (
                         <LocalProviderLoginInstructions adapterType={adapterType} hostedRedirect={googleHostedRedirect} login={{ ...localLogin, retry: () => { autoConnectStartedRef.current = false; setError(null); localLogin.retry(); } }} />
-                      ) : browserSignInUnavailable ? <p role="status" className="text-xs text-muted-foreground">This environment does not support browser sign-in. Go back to use an API key or choose another model.</p> : null
+                      ) : browserSignInUnavailable ? <p role="status" className="text-xs text-muted-foreground">{t(googleSignInDisabled ? "connections.antigravityGoogleSignInDisabled" : "onboarding.browserUnavailable")}</p> : null
                     ) : null}
                   </motion.div>
 
                   {sourceSelected && connectCardLive && connectCardMounted && !connectProgress && credentialMode === "api" && createdCompanyId && (adapterType === "codex_local" || adapterType === "claude_local") && (
                     <details className="space-y-3">
-                      <summary className="cursor-pointer text-sm text-muted-foreground">Advanced</summary>
+                      <summary className="cursor-pointer text-sm text-muted-foreground">{t("onboarding.advanced")}</summary>
                       <OnboardingGatewaySetup
                         companyId={createdCompanyId} agentId={setupAgentId ?? undefined} environmentId={resolvedLoginEnvironmentId ?? undefined}
                         adapterType={adapterType} disabled={loading || adapterEnvLoading}
@@ -3379,7 +3382,7 @@ function OnboardingWizardInner({
 
                       {runnerDiscoveryError && (
                         <Button type="button" variant="outline" disabled={runnerDiscovery.isFetching || loginEnvironmentsFetching || loginSettingsFetching || loginPolicyFetching} onClick={() => void retryRunnerAvailability()}>
-                          Retry setup
+                          {t("onboarding.retrySetup")}
                         </Button>
                       )}
 
@@ -3395,7 +3398,7 @@ function OnboardingWizardInner({
                             style={{ "--sc": "var(--status-task-done)" } as CSSProperties}
                           >
                             <Check className="size-3.5 shrink-0" />
-                            <span className="font-medium">Passed</span>
+                            <span className="font-medium">{t("onboarding.passed")}</span>
                           </div>
                           {/* Show the checks on a pass too, so the target and the
                               auth signals stay visible before the hire. */}
@@ -3431,7 +3434,7 @@ function OnboardingWizardInner({
 
                       {adapterEnvResult && adapterEnvResult.status === "fail" && localLoginHealth.isSuccess && !cloudInstance && (
                         <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-(length:--text-micro) space-y-1.5">
-                          <p className="font-medium">Manual debug</p>
+                          <p className="font-medium">{t("onboarding.manualDebug")}</p>
                           <p className="text-muted-foreground font-mono break-all">
                             {adapterType === "cursor"
                               ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
@@ -3451,7 +3454,7 @@ function OnboardingWizardInner({
                           </p>
                           {adapterType === "claude_local" || adapterType === "codex_local" ? (
                             <p className="text-muted-foreground">
-                              If authentication fails, connect your subscription in the browser above or use an API key.
+                              {t("onboarding.authHint")}
                             </p>
                           ) : adapterType === "cursor" ||
                           adapterType === "gemini_local" ||
@@ -3481,7 +3484,7 @@ function OnboardingWizardInner({
                               .
                             </p>
                           ) : (
-                            <p className="text-muted-foreground">If login is required, connect the provider above and retry.</p>
+                            <p className="text-muted-foreground">{t("onboarding.retryAuthHint")}</p>
                           )}
                         </div>
                       )}
@@ -3546,20 +3549,20 @@ function OnboardingWizardInner({
                   // prototype's own local flow draws with "Next".
                   primaryLabel={
                     step === 1
-                      ? "Continue"
+                      ? t("common.continue")
                       : step === 5
-                        ? "Get started"
+                        ? t("onboarding.startButton")
                         : step === 4
                           ? connectCta.label
-                          : "Next"
+                          : t("common.next")
                   }
                   primaryIcon={step === 4 ? connectCta.icon : undefined}
                   loadingLabel={
                     step === 1
-                      ? "Creating..."
+                      ? t("onboarding.creating")
                       : step === 4
-                        ? "Connecting"
-                        : "Launching..."
+                        ? t("onboarding.connecting")
+                        : t("onboarding.launching")
                   }
                   // The browser-code login is finished on this screen, so the
                   // button is genuinely busy for its duration and shows it. The

@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 /**
  * One way to render a read.
  *
@@ -138,6 +139,7 @@ const NOT_RETRYABLE: ReadonlySet<ErrorKind> = new Set(["auth", "forbidden", "not
  * from `describeError` and a Retry button. Never renders a raw error code.
  */
 export function QueryErrorState({ error, size = "panel", action, onRetry, retrying = false, className }: QueryErrorStateProps) {
+  const { t } = useTranslation();
   const kind = classifyError(error);
   const { title, body } = describeError(error, { action });
   const retryButton = onRetry && !NOT_RETRYABLE.has(kind) ? (
@@ -149,7 +151,7 @@ export function QueryErrorState({ error, size = "panel", action, onRetry, retryi
       disabled={retrying}
     >
       <RefreshCcw aria-hidden="true" className={cn(retrying && "animate-spin")} />
-      {retrying ? "Retrying…" : "Retry"}
+      {retrying ? t("common.retrying") : t("common.retry")}
     </Button>
   ) : null;
 
@@ -227,9 +229,10 @@ export function QueryPlaceholder({ size = "panel", label = "Loading", className 
 
 /** The small hint above stale content, for surfaces that opt in with `staleHint`. */
 export function QueryStaleHint({ className }: { className?: string }) {
+  const { t } = useTranslation();
   return (
     <p role="status" data-query-view="stale" className={cn("text-xs text-muted-foreground", className)}>
-      Updating paused while reconnecting…
+      {t("common.updatePaused")}
     </p>
   );
 }
@@ -266,12 +269,13 @@ export function QueryView<TData>({
   className,
   children,
 }: QueryViewProps<TData>) {
+  const { t } = useTranslation();
   const view = useQueryView(query);
   switch (view.kind) {
     case "loading":
       return <>{loading ?? <QueryPlaceholder size={size} className={className} />}</>;
     case "reconnecting":
-      return <>{reconnecting ?? loading ?? <QueryPlaceholder size={size} label="Reconnecting" className={className} />}</>;
+      return <>{reconnecting ?? loading ?? <QueryPlaceholder size={size} label={t("common.reconnecting")} className={className} />}</>;
     case "error":
       if (view.errorKind === "not_found" && notFound !== undefined) return <>{notFound}</>;
       return (

@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { QueryErrorState, useQueryView } from "@/components/QueryView";
 import { ChangeEvent, type ReactNode, useEffect, useId, useState } from "react";
 import { AgentObservabilitySettingsSection } from "../components/observability/AgentObservabilitySettings";
@@ -37,6 +38,7 @@ import {
 import { InstanceGeneralSettings } from "./InstanceGeneralSettings";
 
 export function CompanySettings() {
+  const { t } = useTranslation();
   const {
     companies,
     selectedCompany,
@@ -244,14 +246,14 @@ export function CompanySettings() {
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
-      { label: "Settings" }
+      { label: t("nav.settings") }
     ]);
-  }, [setBreadcrumbs, selectedCompany?.name]);
+  }, [setBreadcrumbs, selectedCompany?.name, t]);
 
   if (!selectedCompany) {
     return (
       <div className="text-sm text-muted-foreground">
-        No organization selected. Select an organization from the switcher above.
+        {t("common.selectOrganizationAbove")}
       </div>
     );
   }
@@ -267,16 +269,16 @@ export function CompanySettings() {
     <div className="max-w-6xl space-y-8">
       <div className="flex items-center gap-2">
         <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">General</h1>
+        <h1 className="text-lg font-semibold">{t("settings.general")}</h1>
       </div>
 
       {/* General */}
       <div className="max-w-2xl space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          General
+          {t("settings.general")}
         </div>
         <div className="space-y-3">
-          <Field label="Organization name" hint="The display name for your organization.">
+          <Field label={t("settings.organizationName")} hint="The display name for your organization.">
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
@@ -285,20 +287,19 @@ export function CompanySettings() {
             />
             {isCloudManaged && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Renaming can change this company's task ID prefix. Existing task IDs are
-                renumbered and old task links stop resolving.
+                {t("settings.renameCaution")}
               </p>
             )}
           </Field>
           <Field
-            label="Description"
+            label={t("common.description")}
             hint="Optional description shown in the organization profile."
           >
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
               value={description}
-              placeholder="Optional organization description"
+              placeholder={t("settings.organizationDescription")}
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
@@ -308,7 +309,7 @@ export function CompanySettings() {
       {/* Appearance */}
       <div className="max-w-2xl space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Appearance
+          {t("settings.appearance")}
         </div>
         <div className="space-y-3">
           <div className="flex items-start gap-4">
@@ -321,7 +322,7 @@ export function CompanySettings() {
             </div>
             <div className="flex-1 space-y-3">
               <Field
-                label="Logo"
+                label={t("settings.logo")}
                 hint="Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
               >
                 <div className="space-y-2">
@@ -354,7 +355,7 @@ export function CompanySettings() {
                     </span>
                   )}
                   {logoUploadMutation.isPending && (
-                    <span className="text-xs text-muted-foreground">Uploading logo...</span>
+                    <span className="text-xs text-muted-foreground">{t("settings.uploadingLogo")}</span>
                   )}
                 </div>
               </Field>
@@ -371,10 +372,10 @@ export function CompanySettings() {
             onClick={handleSaveGeneral}
             disabled={generalMutation.isPending || !companyName.trim()}
           >
-            {generalMutation.isPending ? "Saving..." : "Save changes"}
+            {generalMutation.isPending ? t("common.saving") : "Save changes"}
           </Button>
           {generalMutation.isSuccess && (
-            <span className="text-xs text-muted-foreground">Saved</span>
+            <span className="text-xs text-muted-foreground">{t("common.saved")}</span>
           )}
           {generalMutation.error && (
             <span className="text-xs text-destructive">
@@ -387,11 +388,11 @@ export function CompanySettings() {
       {/* Hiring */}
       <div className="max-w-2xl space-y-4" data-testid="company-settings-team-section">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Hiring
+          {t("settings.hiring")}
         </div>
         <div>
           <ToggleField
-            label="Require board approval for new hires"
+            label={t("settings.requireApproval")}
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
@@ -404,15 +405,15 @@ export function CompanySettings() {
       <div className="max-w-2xl space-y-4" data-testid="company-settings-decisions-section">
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Decisions
+            {t("nav.decisions")}
           </div>
           <p className="text-xs text-muted-foreground">
-            Each owner saves as soon as you choose it.
+            {t("settings.saveOwnerImmediately")}
           </p>
         </div>
         {membersView.kind === "error" ? <QueryErrorState error={membersView.error} onRetry={membersView.retry} /> : null}
         <DecisionOwnerField
-          label="Default decision owner"
+          label={t("settings.defaultDecisionOwner")}
           hint="When a card needs a person but has no explicit owner, it goes to this user's For you list. Leave as Unassigned to keep ownerless cards in the claimable pool."
           testId="company-settings-default-decision-owner"
           unsetLabel="Unassigned (no default owner)"
@@ -423,7 +424,7 @@ export function CompanySettings() {
           save={saveDefaultDecisionOwner}
         />
         <DecisionOwnerField
-          label="Budget owner"
+          label={t("settings.budgetOwner")}
           hint="A budget hard stop also goes to this user's For you list, with Raise limit and Keep paused. The Company view still shows it to every operator."
           testId="company-settings-budget-owner"
           unsetLabel="No budget owner (Company view only)"
@@ -458,12 +459,11 @@ export function CompanySettings() {
       {/* Danger Zone */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-destructive uppercase tracking-wide">
-          Danger Zone
+          {t("settings.dangerZone")}
         </div>
         <div className="space-y-3 bg-destructive/5 px-4 py-4">
           <p className="text-sm text-muted-foreground">
-            Archive this organization to hide it from the sidebar. This persists in
-            the database.
+            {t("settings.archiveOrgDescription")}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -483,10 +483,10 @@ export function CompanySettings() {
               }}
             >
               {archiveMutation.isPending
-                ? "Archiving..."
+                ? t("settings.archiving")
                 : selectedCompany.status === "archived"
-                ? "Already archived"
-                : "Archive organization"}
+                ? t("settings.alreadyArchived")
+                : t("settings.archiveOrg")}
             </Button>
             {archiveMutation.error && (
               <span className="text-xs text-destructive">
@@ -527,6 +527,7 @@ function DecisionOwnerField({
   fallbackError: string;
   save: (userId: string | null) => Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const controlId = useId();
   const errorId = `${controlId}-error`;
   const mutation = useMutation({
@@ -567,7 +568,7 @@ function DecisionOwnerField({
         </p>
       ) : (
         <p role="status" className="min-h-4 text-xs text-muted-foreground">
-          {mutation.isPending ? "Saving…" : mutation.isSuccess ? "Saved" : null}
+          {mutation.isPending ? "Saving…" : mutation.isSuccess ? t("common.saved") : null}
         </p>
       )}
     </div>

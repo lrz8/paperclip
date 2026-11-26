@@ -13,6 +13,8 @@
  */
 
 import { CancelledError } from "@tanstack/react-query";
+import { i18n, t } from "@/i18n";
+import englishMessages from "@/i18n/locales/en.json";
 
 export type ErrorKind =
   | "transient"
@@ -62,76 +64,22 @@ const CONNECTIVITY_CODES = new Set(["tenant_app_unavailable", "tenant_app_starti
 // raw `body.error`/`body.code`) or an `ErrorKind` fallback. Never return a raw
 // code to the user: anything not in this table falls back to its kind's copy.
 
-const UNAVAILABLE_BODY = "Paperclip is temporarily unavailable. Please try again in a moment.";
+const ERROR_KINDS = new Set<string>([
+  "transient", "auth", "forbidden", "not_found", "conflict", "invalid", "aborted", "unknown",
+]);
 
-const CODE_COPY: Record<string, { title: string; body: string }> = {
-  tenant_app_unavailable: {
-    title: "Reconnecting to Paperclip",
-    body: "Paperclip is restarting or updating. Please try again in a moment.",
-  },
-  tenant_app_starting: {
-    title: "Paperclip is starting",
-    body: "Paperclip is starting up. Please try again in a few seconds.",
-  },
-  WORKER_UNAVAILABLE: {
-    title: "Plugin unavailable",
-    body: "This plugin is restarting. Please try again in a moment.",
-  },
-  TIMEOUT: {
-    title: "Request timed out",
-    body: "This took too long to respond. Please try again in a moment.",
-  },
-  // Queued message edits. The editor keeps the person's text in every case.
-  queued_comment_revision_conflict: {
-    title: "Queue changed",
-    body: "The queue changed in another session. Your edit is still here; save again to apply it to the latest queue.",
-  },
-  queued_comment_stale_queue: {
-    title: "Queue changed",
-    body: "The queue changed in another session. Your edit is still here; save again to apply it to the latest queue.",
-  },
-  queued_comment_stale_target: {
-    title: "Queued message changed",
-    body: "This queued message was already sent or removed. Your text is still here; you can queue it as a new message.",
-  },
-  queued_comment_not_pending: {
-    title: "Queued message changed",
-    body: "This queued message was already sent or removed. Your text is still here; you can queue it as a new message.",
-  },
-  // Issue-thread interaction resolution (moved from lib/interaction-resolution-error.ts).
-  interaction_audience_denied: {
-    title: "You can’t respond to this card",
-    body: "You are not in this card's resolver audience.",
-  },
-  interaction_forbidden: {
-    title: "You can’t respond to this card",
-    body: "You do not have permission to respond to this card.",
-  },
-  interaction_settled: {
-    title: "Already handled",
-    body: "This request is no longer waiting for a decision.",
-  },
-  interaction_submit_failed: {
-    title: "Couldn't submit",
-    body: "Couldn't submit. Try again.",
-  },
-};
+const englishErrors = englishMessages.errors;
 
-const KIND_COPY: Record<ErrorKind, { title: string; body: string }> = {
-  // Moved from `ApiUnavailableError` (api/response.ts).
-  transient: { title: "Connection interrupted", body: UNAVAILABLE_BODY },
-  auth: { title: "Signed out", body: "Your session has ended. Sign in again to continue." },
-  forbidden: { title: "Not allowed", body: "You don’t have permission to do that." },
-  not_found: { title: "Not found", body: "This item doesn’t exist or was moved." },
-  conflict: { title: "Out of date", body: "This changed since you loaded it. Refresh and try again." },
-  invalid: { title: "Check your input", body: "Some details aren’t valid. Review them and try again." },
-  aborted: { title: "Cancelled", body: "The request was cancelled." },
-  unknown: { title: "Something went wrong", body: "An unexpected error occurred. Please try again." },
-};
+type ErrorCopyKey = Exclude<keyof typeof englishErrors, "failedAction">;
+
+function hasErrorCopy(key: string): key is ErrorCopyKey {
+  return key !== "failedAction" && Object.hasOwn(englishErrors, key);
+}
 
 /** Copy for a specific code or kind, for callers that build their own messages. */
 export function errorCopy(key: string): { title: string; body: string } {
-  return CODE_COPY[key] ?? KIND_COPY[key as ErrorKind] ?? KIND_COPY.unknown;
+  const knownKey = hasErrorCopy(key) ? key : "unknown";
+  return { title: t(`errors.${knownKey}.title`), body: t(`errors.${knownKey}.body`) };
 }
 
 // --- Field extraction -------------------------------------------------------------
@@ -178,7 +126,7 @@ export function errorCodes(err: unknown): string[] {
 export function isRawErrorCode(value: string): boolean {
   const text = value.trim();
   if (!text || /\s/.test(text)) return false;
-  return Object.hasOwn(KIND_COPY, text) || text === "unauthorized"
+  return ERROR_KINDS.has(text) || text === "unauthorized"
     || /^[A-Za-z0-9]+(?:[_.][A-Za-z0-9]+)+$/.test(text) || /^[A-Z][A-Z0-9_]{2,}$/.test(text);
 }
 
@@ -194,7 +142,7 @@ function readableServerMessage(err: unknown): string | null {
     if (!candidate) continue;
     if (isRawErrorCode(candidate)) continue;
     if (/^Request failed: \d+$/.test(candidate)) continue;
-    if (candidate === UNAVAILABLE_BODY) continue;
+    if (candidate === englishErrors.transient.body || candidate === t("errors.transient.body")) continue;
     return candidate;
   }
   return null;
@@ -292,17 +240,17 @@ export function errorRetryAfterMs(err: unknown): number | null {
 export function describeError(err: unknown, options: DescribeErrorOptions = {}): ErrorDescription {
   const kind = classifyError(err);
   const retryable = kind === "transient" || kind === "unknown";
-  const coded = errorCodes(err).map((code) => CODE_COPY[code]).find(Boolean);
-  const fallback = KIND_COPY[kind];
-
-  let body: string;
-  if (coded) body = coded.body;
-  else if (kind === "transient" || kind === "aborted") body = fallback.body;
-  else body = readableServerMessage(err) ?? fallback.body;
-
-  const title = options.action && kind !== "transient"
-    ? `Couldn't ${options.action}`
-    : (coded?.title ?? fallback.title);
+  const code = errorCodes(err).find((key) => !ERROR_KINDS.has(key) && hasErrorCopy(key));
+  const copy = errorCopy(code ?? kind);
+  const body = code || kind === "transient" || kind === "aborted"
+    ? copy.body
+    : readableServerMessage(err) ?? copy.body;
+  // Existing callers may still supply an English action. Use the localized kind
+  // title for those actions until the caller provides localized text.
+  const action = options.action;
+  const title = action && kind !== "transient" && (i18n.resolvedLanguage !== "zh-CN" || /\p{Script=Han}/u.test(action))
+    ? t("errors.failedAction", { action })
+    : copy.title;
   return { title, body, retryable };
 }
 

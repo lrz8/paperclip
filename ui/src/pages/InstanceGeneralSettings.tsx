@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PatchInstanceGeneralSettings, BackupRetentionPolicy } from "@paperclipai/shared";
@@ -23,6 +24,7 @@ import { useSignOut } from "@/hooks/useSignOut";
 const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
 
 export function InstanceGeneralSettings({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useTranslation();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -32,10 +34,10 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
   useEffect(() => {
     if (embedded) return;
     setBreadcrumbs([
-      { label: "Settings", href: "/company/settings" },
-      { label: "General" },
+      { label: t("nav.settings"), href: "/company/settings" },
+      { label: t("settings.general") },
     ]);
-  }, [embedded, setBreadcrumbs]);
+  }, [embedded, setBreadcrumbs, t]);
 
   const generalQuery = useQuery({
     queryKey: queryKeys.instance.generalSettings,
@@ -64,7 +66,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
   });
 
   if (generalQuery.isLoading || generalView.kind === "reconnecting" || healthQuery.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading general settings...</div>;
+    return <div className="text-sm text-muted-foreground">{t("settings.generalLoading")}</div>;
   }
 
   if (generalView.kind === "error") {
@@ -106,7 +108,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-lg font-semibold">General</h1>
+            <h1 className="text-lg font-semibold">{t("settings.general")}</h1>
           </div>
           <p className="text-sm text-muted-foreground">
             Configure instance-wide preferences
@@ -125,7 +127,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
       <section>
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold">Deployment and auth</h2>
+            <h2 className="text-sm font-semibold">{t("settings.deploymentAndAuth")}</h2>
             <ModeBadge
               deploymentMode={healthQuery.data?.deploymentMode}
               deploymentExposure={healthQuery.data?.deploymentExposure}
@@ -140,15 +142,15 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <StatusBox
-              label="Auth readiness"
+              label={t("settings.authReadiness")}
               value={healthQuery.data?.authReady ? "Ready" : "Not ready"}
             />
             <StatusBox
-              label="Bootstrap status"
+              label={t("settings.bootstrapStatus")}
               value={healthQuery.data?.bootstrapStatus === "bootstrap_pending" ? "Setup required" : "Ready"}
             />
             <StatusBox
-              label="Bootstrap invite"
+              label={t("settings.bootstrapInvite")}
               value={healthQuery.data?.bootstrapInviteActive ? "Active" : "None"}
             />
           </div>
@@ -160,18 +162,16 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
       <section>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Censor username in logs</h2>
+            <h2 className="text-sm font-semibold">{t("settings.censorUsername")}</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Hide the username segment in home-directory paths and similar operator-visible log output. Standalone
-              username mentions outside of paths are not yet masked in the live transcript view. This is off by
-              default.
+              {t("settings.censorDescription")}
             </p>
           </div>
           <ToggleSwitch
             checked={censorUsernameInLogs}
             onCheckedChange={() => updateGeneralMutation.mutate({ censorUsernameInLogs: !censorUsernameInLogs })}
             disabled={updateGeneralMutation.isPending || signOutMutation.isPending}
-            aria-label="Toggle username log censoring"
+            aria-label={t("settings.censorToggle")}
           />
         </div>
       </section>
@@ -181,16 +181,14 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
       <section>
         <div className="space-y-5">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Backup retention</h2>
+            <h2 className="text-sm font-semibold">{t("settings.backupRetention")}</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Configure how long automatic database backups are retained. Backups run roughly
-              every hour and are compressed with gzip. Within the daily window all backups are
-              kept; beyond that, one backup per week and one per month are preserved.
+              {t("settings.backupRetentionDescription")}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Daily</h3>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("settings.daily")}</h3>
             <div className="flex flex-wrap gap-2">
               {DAILY_RETENTION_PRESETS.map((days) => {
                 const active = backupRetention.dailyDays === days;
@@ -211,7 +209,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
                       })
                     }
                   >
-                    <div className="text-sm font-medium">{days} days</div>
+                    <div className="text-sm font-medium">{days} {t("common.dayUnit")}</div>
                   </button>
                 );
               })}
@@ -219,7 +217,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
           </div>
 
           <div className="space-y-1.5">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Weekly</h3>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("settings.weekly")}</h3>
             <div className="flex flex-wrap gap-2">
               {WEEKLY_RETENTION_PRESETS.map((weeks) => {
                 const active = backupRetention.weeklyWeeks === weeks;
@@ -249,7 +247,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
           </div>
 
           <div className="space-y-1.5">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Monthly</h3>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("settings.monthly")}</h3>
             <div className="flex flex-wrap gap-2">
               {MONTHLY_RETENTION_PRESETS.map((months) => {
                 const active = backupRetention.monthlyMonths === months;
@@ -285,10 +283,9 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
       <section>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">AI feedback sharing</h2>
+            <h2 className="text-sm font-semibold">{t("settings.aiFeedback")}</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Control whether thumbs up and thumbs down votes can send the voted AI output to
-              Paperclip Labs. Votes are always saved locally.
+              {t("settings.aiFeedbackDescription")}
             </p>
             {FEEDBACK_TERMS_URL ? (
               <a
@@ -297,26 +294,25 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
                 rel="noreferrer"
                 className="inline-flex text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
               >
-                Read our terms of service
+                {t("settings.terms")}
               </a>
             ) : null}
           </div>
           {feedbackDataSharingPreference === "prompt" ? (
             <div className="rounded-lg bg-accent/20 px-3 py-2 text-sm text-muted-foreground">
-              No default is saved yet. The next thumbs up or thumbs down choice will ask once and
-              then save the answer here.
+              {t("settings.feedbackUnset")}
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {[
               {
                 value: "allowed",
-                label: "Always allow",
+                label: t("settings.alwaysAllow"),
                 description: "Share voted AI outputs automatically.",
               },
               {
                 value: "not_allowed",
-                label: "Don't allow",
+                label: t("settings.deny"),
                 description: "Keep voted AI outputs local only.",
               },
             ].map((option) => {
@@ -364,9 +360,9 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
       <section>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Sign out</h2>
+            <h2 className="text-sm font-semibold">{t("account.signOut")}</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Sign out of this Paperclip instance. You will be redirected to the login page.
+              {t("settings.signOutDescription")}
             </p>
           </div>
           <Button
@@ -379,7 +375,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
             }}
           >
             <LogOut className="size-4" />
-            {signOutMutation.isPending ? "Signing out..." : "Sign out"}
+            {signOutMutation.isPending ? t("account.signingOut") : t("account.signOut")}
           </Button>
         </div>
       </section>

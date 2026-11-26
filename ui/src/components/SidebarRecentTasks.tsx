@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Archive, MoreHorizontal, Pencil, RefreshCw } from "lucide-react";
@@ -101,6 +102,7 @@ function RecentTasksList({
   userId: string | null;
   liveIssueIds: ReadonlySet<string>;
 }) {
+  const { t } = useTranslation();
   const { entries, storageKey } = useRecentTasks({ companyId, userId });
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
@@ -252,7 +254,7 @@ function RecentTasksList({
       label={entry.title}
       iconNode={entry.displayStatus === "monitoring" && !liveIssueIds.has(entry.id) ? <StatusIcon {...taskStatusIconProps(entry)} /> : undefined}
       trailing={entry.status === "in_review" && entry.externalConversationState === "waiting"
-        ? <span className="text-xs text-muted-foreground">Idle</span> : undefined}
+        ? <span className="text-xs text-muted-foreground">{t("taskStatus.idle")}</span> : undefined}
       className="sidebar-action-link pointer-coarse:pr-8"
       liveCount={liveIssueIds.has(entry.id) ? 1 : undefined}
     />
@@ -286,7 +288,7 @@ function RecentTasksList({
           onSelect={() => void archiveTask(entry)}
         >
           <Archive aria-hidden="true" />
-          Archive
+          {t("common.archive")}
         </DropdownMenuItem>
         <DropdownMenuItem
           className={RECENT_TASK_MENU_ITEM_CLASS}
@@ -303,7 +305,7 @@ function RecentTasksList({
 
   return (
     <>
-      <SidebarSection label="Recent Tasks">
+      <SidebarSection label={t("nav.recentTasks")}>
         {entries.map(renderTaskRow)}
       </SidebarSection>
 
@@ -333,13 +335,13 @@ function RecentTasksList({
                 disabled={pendingAction === "rename"}
                 onClick={() => setRenameEntry(null)}
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 type="submit"
                 disabled={pendingAction === "rename" || !renameValue.trim()}
               >
-                {pendingAction === "rename" ? "Saving..." : "Save"}
+                {pendingAction === "rename" ? t("common.saving") : t("common.save")}
               </Button>
             </DialogFooter>
           </form>

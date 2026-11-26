@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Project } from "@paperclipai/shared";
@@ -71,6 +72,7 @@ function sortProjects(projects: Project[], sortField: ProjectSortField, sortDir:
 }
 
 export function Projects() {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const workspace = useCoordinatorWorkspaceEnabled();
   const pins = usePinnedNavigation(workspace.enabled && workspace.loaded ? workspace.userId : null);
@@ -81,8 +83,8 @@ export function Projects() {
   const [sortDir, setSortDir] = useState<ProjectSortDir>("asc");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Projects" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("nav.projects") }]);
+  }, [setBreadcrumbs, t]);
 
   const projectsQuery = useQuery({
     ...companyProjectsQuery(selectedCompanyId!),
@@ -123,7 +125,7 @@ export function Projects() {
   }, [membershipsQuery.data, sortedProjects]);
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Hexagon} message="Select an organization to view projects." />;
+    return <EmptyState icon={Hexagon} message={t("projects.selectOrganization")} />;
   }
 
   // Keep a loaded list on screen through a failed refetch; only a real
@@ -136,7 +138,7 @@ export function Projects() {
       <QueryErrorState
         size="page"
         error={projectsView.error}
-        action="load projects"
+        action={t("projects.load")}
         onRetry={projectsView.retry}
         retrying={projectsView.isFetching}
       />
@@ -154,14 +156,14 @@ export function Projects() {
         <EmptyState
           icon={Hexagon}
           graphic={<ArtifactEmptyGraphic stack />}
-          message="No projects yet."
-          action="Create project"
+          message={t("projects.none")}
+          action={t("projects.create")}
           hideActionIcon
           onAction={openNewProject}
         />
       )}
 
-      {projects.length > 0 && sortedProjects.length === 0 && <p className="text-sm text-muted-foreground">No projects match your search.</p>}
+      {projects.length > 0 && sortedProjects.length === 0 && <p className="text-sm text-muted-foreground">{t("projects.noMatching")}</p>}
 
       {sortedProjects.length > 0 && (
         <div className="space-y-6">
@@ -198,7 +200,7 @@ export function Projects() {
                         className={state === "left" ? "group min-h-14 text-foreground/55" : "group min-h-14"}
                         trailing={
                           <div className="flex items-center gap-3">
-                            {project.visibility === "private" ? <Lock className="size-4 shrink-0 text-muted-foreground" aria-label="Private project" /> : null}
+                            {project.visibility === "private" ? <Lock className="size-4 shrink-0 text-muted-foreground" aria-label={t("projects.private")} /> : null}
                             <span
                               className="hidden text-xs text-muted-foreground tabular-nums sm:inline"
                               title={`${formatNumber(project.taskCount ?? 0)} task${(project.taskCount ?? 0) === 1 ? "" : "s"}`}
