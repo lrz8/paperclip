@@ -12060,6 +12060,9 @@ export function issueService(db: Db) {
         )) {
           throw conflict("Restore the archived task before changing its status, assignment, or schedule.", { code: "task_archived" });
         }
+        if (patch.assigneeAgentId && patch.assigneeAgentId !== receiptExisting.assigneeAgentId) {
+          await assertAssignableAgent(tx, receiptExisting.companyId, patch.assigneeAgentId, { lock: true });
+        }
         if (Object.keys(issueData).length || nextLabelIds !== undefined || blockedByIssueIds !== undefined) await assertAgentInteraction(tx as unknown as Db, {
           companyId: receiptExisting.companyId, actorAgentId, operation: "edit", issueId: id,
           texts: [

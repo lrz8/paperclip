@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents } from "@paperclipai/db";
 import {
@@ -75,8 +75,8 @@ function conflictDetails(input: {
   };
 }
 
-async function getAgent(db: AssignabilityDb, agentId: string): Promise<AssignabilityAgent | null> {
-  return db
+async function getAgent(db: AssignabilityDb, agentId: string, lockCompanyId?: string): Promise<AssignabilityAgent | null> {
+  const query = db
     .select({
       id: agents.id,
       companyId: agents.companyId,
@@ -86,8 +86,8 @@ async function getAgent(db: AssignabilityDb, agentId: string): Promise<Assignabi
       reportsTo: agents.reportsTo,
     })
     .from(agents)
-    .where(eq(agents.id, agentId))
-    .then((rows) => rows[0] ?? null);
+    .where(and(eq(agents.id, agentId), lockCompanyId ? eq(agents.companyId, lockCompanyId) : undefined));
+  return (lockCompanyId ? query.for("share") : query).then((rows) => rows[0] ?? null);
 }
 
 async function listCompanyAgents(db: AssignabilityDb, companyId: string): Promise<AssignabilityAgent[]> {
@@ -114,11 +114,11 @@ export async function assertAssignableAgent(
   db: AssignabilityDb,
   companyId: string,
   agentId: string | null | undefined,
-  options: { kind?: AgentAssignmentKind } = {},
+  options: { kind?: AgentAssignmentKind; lock?: boolean } = {},
 ) {
   if (!agentId) return;
   const kind = options.kind ?? "work";
-  const assignee = await getAgent(db, agentId);
+  const assignee = await getAgent(db, agentId, options.lock ? companyId : undefined);
   if (!assignee) throw notFound("Assignee agent not found");
   if (assignee.companyId !== companyId) {
     throw unprocessable("Assignee must belong to same company");

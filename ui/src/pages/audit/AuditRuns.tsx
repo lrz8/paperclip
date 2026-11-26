@@ -249,7 +249,7 @@ export function AuditRuns({
         <label className="grid gap-1 text-(length:--text-micro) font-medium text-muted-foreground">
           {t("runLifecycle.archiveFilter")}
           <Select value={archive} onValueChange={(value) => updateFilter("runArchive", value === "active" ? ALL : value)}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-40" aria-label={t("runLifecycle.archiveFilter")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="active">{t("runLifecycle.active")}</SelectItem>
               <SelectItem value="archived">{t("runLifecycle.archived")}</SelectItem>

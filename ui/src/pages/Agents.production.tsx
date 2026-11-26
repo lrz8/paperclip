@@ -228,7 +228,7 @@ export function Agents() {
     enabled: !!selectedCompanyId,
   });
   const { data: agents, isLoading } = agentsQuery;
-  const rosterFilters = useAgentRosterFilters(selectedCompanyId, agents);
+  const rosterFilters = useAgentRosterFilters(selectedCompanyId, agents, tab === "terminated");
   const agentsView = useQueryView(agentsQuery);
 
   const { data: orgTree } = useQuery({
@@ -487,6 +487,7 @@ export function Agents() {
         <AgentBulkRoster key={`${selectedCompanyId}:${tab}`} companyId={selectedCompanyId}
           agents={agents}
           builtInAgentIds={builtInAgentIds}
+          includeTerminated={tab === "terminated"}
           visibleAgents={filtered} renderAgent={renderAgentRow} renderStatus={renderAgentStatus} />
       )}
 

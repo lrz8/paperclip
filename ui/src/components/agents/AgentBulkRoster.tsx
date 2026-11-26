@@ -24,9 +24,10 @@ import { useTranslation } from "@/i18n";
 const AgentBulkSettingsSheet = lazy(() => import("./AgentBulkSettingsSheet").then(m => ({ default: m.AgentBulkSettingsSheet })));
 
 /** Shared by both roster layouts. Mount with a company key to isolate selection. */
-export function AgentBulkRoster({ companyId, agents, visibleAgents, builtInAgentIds, renderAgent, renderChat, renderStatus }: {
+export function AgentBulkRoster({ companyId, agents, visibleAgents, builtInAgentIds, includeTerminated = false, renderAgent, renderChat, renderStatus }: {
   companyId: string; agents: Agent[]; visibleAgents: Agent[]; renderAgent: (agent: Agent) => ReactNode;
   builtInAgentIds?: ReadonlySet<string>;
+  includeTerminated?: boolean;
   renderChat?: (agent: Agent) => ReactNode;
   renderStatus?: (agent: Agent) => ReactNode;
 }) {
@@ -49,7 +50,7 @@ export function AgentBulkRoster({ companyId, agents, visibleAgents, builtInAgent
   const [changingLifecycle, setChangingLifecycle] = useState(false);
   const accounts = useQuery({ queryKey: ["ai-connections", companyId], queryFn: () => aiConnectionsApi.list(companyId) });
   const visible = visibleAgents;
-  const rosterIndex = useMemo(() => buildAgentRosterIndex(agents, accounts.data), [agents, accounts.data]);
+  const rosterIndex = useMemo(() => buildAgentRosterIndex(agents, accounts.data, includeTerminated), [agents, accounts.data, includeTerminated]);
   const visibleIds = useMemo(() => new Set(visible.map(agent => agent.id)), [visible]);
   const selectedIds = useMemo(() => new Set(selected), [selected]);
   const canArchive = (agent: Agent) => !builtInAgentIds?.has(agent.id) && agent.pauseReason !== "setup"

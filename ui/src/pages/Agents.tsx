@@ -254,7 +254,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
     enabled: !!selectedCompanyId,
   });
   const { data: agents, isLoading } = agentsQuery;
-  const rosterFilters = useAgentRosterFilters(selectedCompanyId, agents);
+  const rosterFilters = useAgentRosterFilters(selectedCompanyId, agents, tab === "terminated");
   const agentsView = useQueryView(agentsQuery);
 
   const { data: orgTree } = useQuery({
@@ -477,6 +477,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
         <AgentBulkRoster key={`${selectedCompanyId}:${tab}`} companyId={selectedCompanyId}
           agents={eligibleAgents}
           builtInAgentIds={builtInAgentIds}
+          includeTerminated={tab === "terminated"}
           visibleAgents={filtered} renderAgent={renderAgentRow} renderStatus={renderAgentStatus}
           renderChat={agentChat.enabled && tab === "all" ? agent => (
             // Use Radix's standard hover delay, isolated from the app's instant provider.

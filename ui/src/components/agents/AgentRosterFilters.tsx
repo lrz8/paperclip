@@ -14,11 +14,11 @@ const labels: Record<AgentRosterFilterField, string> = { model: "Model", status:
 const allLabels: Record<AgentRosterFilterField, string> = { model: "All models", status: "All statuses", harness: "All harnesses", connection: "All connections" };
 
 /** Page-owned state keeps filters when switching views and isolates them by company. */
-export function useAgentRosterFilters(companyId: string | null, agents: Agent[] = emptyAgents) {
+export function useAgentRosterFilters(companyId: string | null, agents: Agent[] = emptyAgents, includeTerminated = false) {
   const [selection, setSelection] = useState({ companyId, filters: emptyAgentRosterFilters });
   const filters = selection.companyId === companyId ? selection.filters : emptyAgentRosterFilters;
   const accounts = useQuery({ queryKey: ["ai-connections", companyId], queryFn: () => aiConnectionsApi.list(companyId!), enabled: !!companyId });
-  const index = useMemo(() => buildAgentRosterIndex(agents, accounts.data), [agents, accounts.data]);
+  const index = useMemo(() => buildAgentRosterIndex(agents, accounts.data, includeTerminated), [agents, accounts.data, includeTerminated]);
   const activeCount = agentRosterFilterFields.filter(field => filters[field]).length;
   const matches = useCallback((agent: Agent) => matchesAgentRosterFilters(index.byAgentId.get(agent.id), filters), [index, filters]);
   return {

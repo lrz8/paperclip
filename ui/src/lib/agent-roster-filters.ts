@@ -10,14 +10,14 @@ export type AgentRosterOption = { value: string; label: string };
 export const emptyAgentRosterFilters: AgentRosterFilters = { model: "", status: "", harness: "", connection: "" };
 
 /** Use the same metadata for filter choices and roster cells. Index account names once. */
-export function buildAgentRosterIndex(agents: readonly Agent[], accounts?: AiConnectionList) {
+export function buildAgentRosterIndex(agents: readonly Agent[], accounts?: AiConnectionList, includeTerminated = false) {
   const connectionNames = new Map(accounts?.connections.map(c => [JSON.stringify([c.id, c.grantId]), c.name]));
   const poolNames = new Map(accounts?.pools?.map(pool => [pool.id, pool.name]));
   const byAgentId = new Map<string, Record<AgentRosterFilterField, AgentRosterOption>>();
   const choices = Object.fromEntries(agentRosterFilterFields.map(field => [field, new Map<string, AgentRosterOption>()])) as Record<AgentRosterFilterField, Map<string, AgentRosterOption>>;
 
   for (const agent of agents) {
-    if (agent.status === "pending_approval") continue;
+    if (agent.status === "pending_approval" || (!includeTerminated && agent.status === "terminated")) continue;
     const pending = pendingAgentSetupDisplayAdapter(agent);
     const harness = pending ?? bulkAgentHarness(agent);
     const model = agentDefaultModel(agent);
