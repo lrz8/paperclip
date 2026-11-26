@@ -18,6 +18,7 @@ import {
 import { useAgentEnvironmentSlots } from "@/plugins/useAgentEnvironmentSlots";
 import { usePluginSlots } from "@/plugins/slots";
 import { agentsApi } from "@/api/agents";
+import { useTranslation } from "@/i18n";
 import { useCompany } from "@/context/CompanyContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { ContextualSidebarFrame } from "./ContextualSidebarFrame";
@@ -26,6 +27,7 @@ import { contextualSidebarStyles } from "./contextual-sidebar-styles";
 import {
   AGENT_DETAIL_NAVIGATION,
   agentDetailHref,
+  agentDetailViewLabel,
   type AgentLocalDetailView,
 } from "@/pages/agent-detail-navigation";
 
@@ -58,6 +60,7 @@ export function AgentContextualSidebar({
   agentName?: string;
   labels?: Partial<Record<AgentLocalDetailView, string>>;
 }) {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const shouldResolveAgent = !agentId || !agentName;
   const { data: resolvedAgent } = useQuery({
@@ -68,7 +71,7 @@ export function AgentContextualSidebar({
   const resolvedId = agentId ?? resolvedAgent?.id;
   const { slots: declaredTabs } = usePluginSlots({ slotTypes: ["detailTab"], entityType: "agent", companyId: resolvedAgent?.companyId ?? selectedCompanyId, enabled: Boolean(resolvedId) });
   const { slots: pluginTabs } = useAgentEnvironmentSlots(declaredTabs, resolvedId, resolvedAgent?.companyId ?? selectedCompanyId);
-  const resolvedName = agentName ?? resolvedAgent?.name ?? "Agent";
+  const resolvedName = agentName ?? resolvedAgent?.name ?? t("common.agent");
 
   return (
     <ContextualSidebarFrame
@@ -79,7 +82,7 @@ export function AgentContextualSidebar({
       className="border-r border-border bg-background"
     >
       <nav
-        aria-label={`${resolvedName} navigation`}
+        aria-label={t("agentDetail.namedNavigation", { name: resolvedName })}
         data-slot="contextual-sidebar-nav"
         className={contextualSidebarStyles.nav}
       >
@@ -87,7 +90,7 @@ export function AgentContextualSidebar({
           <div key={section.label} className="contents">
             {section.label === "Audit" && pluginTabs.length > 0 ? (
               <div data-slot="contextual-sidebar-section" className={contextualSidebarStyles.section}>
-                <p className={contextualSidebarStyles.sectionLabel}>Apps</p>
+                <p className={contextualSidebarStyles.sectionLabel}>{t("agentDetail.apps")}</p>
                 <div className={contextualSidebarStyles.group}>
                   {pluginTabs.map(slot => <SidebarNavItem key={`${slot.pluginKey}:${slot.id}`} to={`/agents/${encodeURIComponent(agentRef)}/${encodeURIComponent(`plugin:${slot.pluginKey}:${slot.id}`)}`} label={slot.displayName} icon={Wrench} />)}
                 </div>
@@ -95,14 +98,14 @@ export function AgentContextualSidebar({
             ) : null}
             <div data-slot="contextual-sidebar-section" className={contextualSidebarStyles.section}>
               <p data-slot="contextual-sidebar-section-label" className={contextualSidebarStyles.sectionLabel}>
-                {section.label}
+                {t(section.label === "Audit" ? "nav.audit" : "common.agent")}
               </p>
               <div data-slot="contextual-sidebar-group" className={contextualSidebarStyles.group}>
                 {section.items.map((item) => (
                   <SidebarNavItem
                     key={item.value}
                     to={agentDetailHref(agentRef, item.value)}
-                    label={labels?.[item.value] ?? item.label}
+                    label={labels?.[item.value] ?? agentDetailViewLabel(item.value, t)}
                     icon={localIcons[item.value]}
                   />
                 ))}

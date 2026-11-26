@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { NavLink, useLocation } from "@/lib/router";
 import { ChatDetailSidebar } from "./chat/ChatDetailSidebar";
 import { ChatSetupSidebar } from "./chat/ChatSetupNavigation";
@@ -16,6 +17,7 @@ import { contextualSidebarStyles } from "./contextual-sidebar-styles";
  * developer surfaces remain hidden unless one is explicitly enabled.
  */
 export function AppsSidebar() {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
   const reviewCount = useReviewCount();
   const { enabled: smokeLabEnabled } = useSmokeLabEnabled();
@@ -33,19 +35,19 @@ export function AppsSidebar() {
   return (
     <aside className="w-full h-full min-h-0 border-r border-border bg-background flex flex-col">
       <nav
-        aria-label="Connectors"
+        aria-label={t("nav.connectors")}
         data-slot="contextual-sidebar-nav"
         className={contextualSidebarStyles.nav}
       >
         <div data-slot="contextual-sidebar-group" className={contextualSidebarStyles.group}>
-          <SidebarNavItem to="/apps" label="Browse" icon={Store} end />
+          <SidebarNavItem to="/apps" label={t("apps.browse")} icon={Store} end />
           <SidebarNavItem
             to="/apps/review"
-            label="Review"
+            label={t("apps.review")}
             icon={ShieldQuestion}
             badge={reviewCount > 0 ? reviewCount : undefined}
             badgeTone="warning"
-            badgeLabel="waiting for your OK"
+            badgeLabel={t("apps.waitingForApproval")}
           />
         </div>
         {developerTabs.length > 0 ? (
@@ -54,13 +56,13 @@ export function AppsSidebar() {
               data-slot="contextual-sidebar-section-label"
               className={contextualSidebarStyles.sectionLabel}
             >
-              Developer
+              {t("apps.developer")}
             </div>
             <p
               data-slot="contextual-sidebar-section-description"
               className={contextualSidebarStyles.sectionDescription}
             >
-              Advanced setup for developers.
+              {t("apps.developerDescription")}
             </p>
             <div data-slot="contextual-sidebar-group" className={contextualSidebarStyles.group}>
               {developerTabs.map((tab) => (
@@ -82,11 +84,12 @@ export function AppsSidebar() {
 
 /** Mobile collection navigation replaces the desktop Browse/Review rail. */
 export function AppsMobileNav() {
+  const { t } = useTranslation();
   const reviewCount = useReviewCount();
   const segmentClass = ({ isActive }: { isActive: boolean }) =>
     `flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`;
-  return <nav aria-label="Connectors" className="mb-4 flex rounded-lg border border-border bg-background p-1">
-    <NavLink to="/apps" end className={segmentClass}>Browse</NavLink>
-    <NavLink to="/apps/review" className={segmentClass}>Review{reviewCount > 0 && <span className="rounded-full bg-muted px-1.5 text-xs" aria-label={`${reviewCount} waiting for your OK`}>{reviewCount}</span>}</NavLink>
+  return <nav aria-label={t("nav.connectors")} className="mb-4 flex rounded-lg border border-border bg-background p-1">
+    <NavLink to="/apps" end className={segmentClass}>{t("apps.browse")}</NavLink>
+    <NavLink to="/apps/review" className={segmentClass}>{t("apps.review")}{reviewCount > 0 && <span className="rounded-full bg-muted px-1.5 text-xs" aria-label={t("apps.reviewCount", { count: reviewCount })}>{reviewCount}</span>}</NavLink>
   </nav>;
 }

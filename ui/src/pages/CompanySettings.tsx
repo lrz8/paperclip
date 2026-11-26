@@ -116,7 +116,7 @@ export function CompanySettings() {
   });
 
   // Each owner saves on change with only its own field, so neither belongs to
-  // the General draft or its "Save changes" button. Waiting for the refetch
+  // the General draft or its t("settings.saveChanges") button. Waiting for the refetch
   // keeps the picker on the new owner instead of flashing back to the old one.
   async function saveDefaultDecisionOwner(defaultDecisionOwnerUserId: string | null) {
     const company = await companiesApi.update(selectedCompanyId!, { defaultDecisionOwnerUserId });
@@ -203,7 +203,7 @@ export function CompanySettings() {
       // still makes sense (another active company, the Cloud portfolio, or
       // the companies list), with a toast naming what happened.
       const archived = companies.find((company) => company.id === companyId);
-      const archivedName = archived?.name ?? "Organization";
+      const archivedName = archived?.name ?? t("nav.organization");
       const departure = resolveCompanyArchiveDeparture({
         archivedCompanyId: companyId,
         companies,
@@ -218,8 +218,8 @@ export function CompanySettings() {
       }
       if (departure.kind === "company") {
         toastActions?.pushToast({
-          title: `${archivedName} is archived`,
-          body: `Switched to ${departure.company.name}.`,
+          title: t("settings.organizationArchived", { name: archivedName }),
+          body: t("settings.switchedOrganization", { name: departure.company.name }),
           tone: "info",
           dedupeKey: `company-archive-departure:${companyId}`,
         });
@@ -227,8 +227,8 @@ export function CompanySettings() {
         navigate(`/${departure.company.issuePrefix}/dashboard`, { replace: true });
       } else {
         toastActions?.pushToast({
-          title: `${archivedName} is archived`,
-          body: "You can unarchive it from this list.",
+          title: t("settings.organizationArchived", { name: archivedName }),
+          body: t("settings.unarchiveInList"),
           tone: "info",
           dedupeKey: `company-archive-departure:${companyId}`,
         });
@@ -245,7 +245,7 @@ export function CompanySettings() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
+      { label: selectedCompany?.name ?? t("nav.organization"), href: "/dashboard" },
       { label: t("nav.settings") }
     ]);
   }, [setBreadcrumbs, selectedCompany?.name, t]);
@@ -278,7 +278,7 @@ export function CompanySettings() {
           {t("settings.general")}
         </div>
         <div className="space-y-3">
-          <Field label={t("settings.organizationName")} hint="The display name for your organization.">
+          <Field label={t("settings.organizationName")} hint={t("settings.organizationNameHint")}>
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
@@ -293,7 +293,7 @@ export function CompanySettings() {
           </Field>
           <Field
             label={t("common.description")}
-            hint="Optional description shown in the organization profile."
+            hint={t("settings.organizationDescriptionHint")}
           >
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
@@ -323,7 +323,7 @@ export function CompanySettings() {
             <div className="flex-1 space-y-3">
               <Field
                 label={t("settings.logo")}
-                hint="Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
+                hint={t("settings.logoUploadHint")}
               >
                 <div className="space-y-2">
                   <input
@@ -340,7 +340,7 @@ export function CompanySettings() {
                         onClick={handleClearLogo}
                         disabled={clearLogoMutation.isPending}
                       >
-                        {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
+                        {clearLogoMutation.isPending ? t("settings.removingLogo") : t("settings.removeLogo")}
                       </Button>
                     </div>
                   )}
@@ -372,7 +372,7 @@ export function CompanySettings() {
             onClick={handleSaveGeneral}
             disabled={generalMutation.isPending || !companyName.trim()}
           >
-            {generalMutation.isPending ? t("common.saving") : "Save changes"}
+            {generalMutation.isPending ? t("common.saving") : t("settings.saveChanges")}
           </Button>
           {generalMutation.isSuccess && (
             <span className="text-xs text-muted-foreground">{t("common.saved")}</span>
@@ -393,7 +393,7 @@ export function CompanySettings() {
         <div>
           <ToggleField
             label={t("settings.requireApproval")}
-            hint="New agent hires stay pending until approved by board."
+            hint={t("settings.hiringApprovalHint")}
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
             toggleTestId="company-settings-team-approval-toggle"
@@ -414,24 +414,24 @@ export function CompanySettings() {
         {membersView.kind === "error" ? <QueryErrorState error={membersView.error} onRetry={membersView.retry} /> : null}
         <DecisionOwnerField
           label={t("settings.defaultDecisionOwner")}
-          hint="When a card needs a person but has no explicit owner, it goes to this user's For you list. Leave as Unassigned to keep ownerless cards in the claimable pool."
+          hint={t("settings.defaultDecisionOwnerHint")}
           testId="company-settings-default-decision-owner"
-          unsetLabel="Unassigned (no default owner)"
+          unsetLabel={t("settings.unassignedDecisionOwner")}
           savedUserId={selectedCompany.defaultDecisionOwnerUserId ?? null}
           memberOptions={memberOptions}
           membersLoading={membersQuery.isLoading}
-          fallbackError="Couldn't save the default decision owner."
+          fallbackError={t("settings.saveDecisionOwnerError")}
           save={saveDefaultDecisionOwner}
         />
         <DecisionOwnerField
           label={t("settings.budgetOwner")}
-          hint="A budget hard stop also goes to this user's For you list, with Raise limit and Keep paused. The Company view still shows it to every operator."
+          hint={t("settings.budgetOwnerHint")}
           testId="company-settings-budget-owner"
-          unsetLabel="No budget owner (Company view only)"
+          unsetLabel={t("settings.unassignedBudgetOwner")}
           savedUserId={selectedCompany.budgetOwnerUserId ?? null}
           memberOptions={memberOptions}
           membersLoading={membersQuery.isLoading}
-          fallbackError="Couldn't save the budget owner."
+          fallbackError={t("settings.saveBudgetOwnerError")}
           save={saveBudgetOwner}
         />
       </div>
@@ -476,7 +476,7 @@ export function CompanySettings() {
               onClick={() => {
                 if (!selectedCompanyId) return;
                 const confirmed = window.confirm(
-                  `Archive organization "${selectedCompany.name}"? It will be hidden from the sidebar.`
+                  t("settings.confirmArchiveOrganization", { name: selectedCompany.name })
                 );
                 if (!confirmed) return;
                 archiveMutation.mutate({ companyId: selectedCompanyId });
@@ -502,7 +502,7 @@ export function CompanySettings() {
 
 /**
  * One Decisions owner picker. It saves on change, on its own, so the page's
- * General "Save changes" never carries it. A real `<label htmlFor>` names the
+ * General t("settings.saveChanges") never carries it. A real `<label htmlFor>` names the
  * select, and the line under it reports saving, saved, or the server's error
  * (for example the 422 for an owner who is not an active member).
  */
@@ -568,7 +568,7 @@ function DecisionOwnerField({
         </p>
       ) : (
         <p role="status" className="min-h-4 text-xs text-muted-foreground">
-          {mutation.isPending ? "Saving…" : mutation.isSuccess ? t("common.saved") : null}
+          {mutation.isPending ? t("common.saving") : mutation.isSuccess ? t("common.saved") : null}
         </p>
       )}
     </div>

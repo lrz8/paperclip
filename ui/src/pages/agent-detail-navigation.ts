@@ -59,7 +59,26 @@ export function isAgentAuditView(view: AgentDetailView): view is AgentAuditView 
   return AGENT_AUDIT_VIEWS.has(view as AgentLocalDetailView);
 }
 
-export function agentDetailViewLabel(view: AgentLocalDetailView): string {
+const AGENT_VIEW_TRANSLATIONS: Record<AgentLocalDetailView, string> = {
+  "overview": "agentDetail.overview",
+  "instructions": "agentDetail.identity",
+  "runtime": "agentDetail.harnessRuntime",
+  "secrets": "agentDetail.secretsVariables",
+  "permissions": "agentDetail.permissionsTrust",
+  "advanced": "onboarding.advanced",
+  "activity": "nav.activity",
+  "runs": "agentDetail.runs",
+  "costs": "nav.costs",
+  "budgets": "agentDetail.budgets",
+  "skills": "nav.skills",
+  "tools": "agentDetail.tools",
+  "channels": "agentDetail.channels",
+  "api-keys": "agentDetail.apiKeys",
+  "revisions": "agentDetail.agentHistory",
+};
+
+export function agentDetailViewLabel(view: AgentLocalDetailView, translate?: (key: string) => string): string {
+  if (translate) return translate(AGENT_VIEW_TRANSLATIONS[view]);
   const item = AGENT_DETAIL_NAVIGATION.flatMap((section) => section.items).find((entry) => entry.value === view);
   return item?.label ?? HIDDEN_VIEW_LABELS[view] ?? "Overview";
 }

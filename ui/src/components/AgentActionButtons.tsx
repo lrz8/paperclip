@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@/lib/router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -54,7 +55,7 @@ import type {
 export function RunButton({
   onClick,
   disabled,
-  label = "Run now",
+  label,
   size = "sm",
 }: {
   onClick: () => void;
@@ -62,10 +63,11 @@ export function RunButton({
   label?: string;
   size?: "sm" | "default";
 }) {
+  const { t } = useTranslation();
   return (
     <Button variant="outline" size={size} onClick={onClick} disabled={disabled}>
       <Play className="h-3.5 w-3.5 sm:mr-1" />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden sm:inline">{label ?? t("agentDetail.runNow")}</span>
     </Button>
   );
 }
@@ -83,11 +85,12 @@ export function PauseResumeButton({
   disabled?: boolean;
   size?: "sm" | "default";
 }) {
+  const { t } = useTranslation();
   if (isPaused) {
     return (
       <Button variant="outline" size={size} onClick={onResume} disabled={disabled}>
         <Play className="h-3.5 w-3.5 sm:mr-1" />
-        <span className="hidden sm:inline">Resume</span>
+        <span className="hidden sm:inline">{t("agentDetail.resumeAgent")}</span>
       </Button>
     );
   }
@@ -95,7 +98,7 @@ export function PauseResumeButton({
   return (
     <Button variant="outline" size={size} onClick={onPause} disabled={disabled}>
       <Pause className="h-3.5 w-3.5 sm:mr-1" />
-      <span className="hidden sm:inline">Pause</span>
+      <span className="hidden sm:inline">{t("agentDetail.pauseAgent")}</span>
     </Button>
   );
 }
@@ -109,6 +112,7 @@ export function ClearErrorButton({
   disabled?: boolean;
   size?: "sm" | "default";
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="outline"
@@ -116,10 +120,10 @@ export function ClearErrorButton({
       onClick={onClick}
       disabled={disabled}
       className="border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/50"
-      aria-label="Clear error and return agent to idle"
+      aria-label={t("agentDetail.clearAgentError")}
     >
       <CheckCircle2 className="h-3.5 w-3.5 sm:mr-1" />
-      <span className="hidden sm:inline">Clear error</span>
+      <span className="hidden sm:inline">{t("agentDetail.clearError")}</span>
     </Button>
   );
 }
@@ -161,11 +165,11 @@ export function AgentActionButtons({
   agent,
   companyId,
   size = "sm",
-  assignLabel = "Assign Task",
+  assignLabel: customAssignLabel,
   showAssignIcon = true,
   assignIcon: AssignIcon = Plus,
   showChat = false,
-  runLabel = "Run now",
+  runLabel: customRunLabel,
   showStatus = true,
   showRun = true,
   actionsDisabled = false,
@@ -223,6 +227,9 @@ export function AgentActionButtons({
   children?: React.ReactNode;
   className?: string;
 }) {
+  const { t } = useTranslation();
+  const assignLabel = customAssignLabel ?? t("agentDetail.assignTask");
+  const runLabel = customRunLabel ?? t("agentDetail.runNow");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openNewIssue } = useDialogActions();
@@ -261,7 +268,7 @@ export function AgentActionButtons({
       if (onActionError) {
         onActionError(message);
       } else {
-        pushToast({ title: "Action failed", body: message, tone: "error" });
+        pushToast({ title: t("agentDetail.actionError"), body: message, tone: "error" });
       }
     },
     [onActionError, pushToast],
@@ -303,7 +310,7 @@ export function AgentActionButtons({
       }
     },
     onError: (err) => {
-      reportError(err instanceof Error ? err.message : "Action failed");
+      reportError(err instanceof Error ? err.message : t("agentDetail.actionError"));
     },
   });
 
@@ -329,25 +336,25 @@ export function AgentActionButtons({
       if (resolvedCompanyId) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
       }
-      pushToast({ title: "Agent duplicated", body: createdAgent.name, tone: "success" });
+      pushToast({ title: t("agentDetail.agentDuplicated"), body: createdAgent.name, tone: "success" });
       if (!confirmLateNavigationChanges(duplicateStartedDirtyRef)) return;
       navigate(`/agents/${agentRouteRef(createdAgent)}/dashboard`);
     },
     onError: (err) => {
-      const message = err instanceof Error ? err.message : "Failed to duplicate agent";
+      const message = err instanceof Error ? err.message : t("agentDetail.duplicateAgentFailed");
       onActionError?.(message);
-      pushToast({ title: "Could not duplicate agent", body: message, tone: "error" });
+      pushToast({ title: t("agentDetail.duplicateAgentError"), body: message, tone: "error" });
     },
   });
 
   const handleDuplicateAgent = useCallback(() => {
     if (duplicateAgent.isPending) return;
     const nextName = duplicateAgentName(agent.name);
-    const confirmed = window.confirm(`Duplicate ${agent.name} as ${nextName}?`);
+    const confirmed = window.confirm(t("agentDetail.confirmDuplicateAgent", { name: agent.name, nextName }));
     setMoreOpen(false);
     if (!confirmed || !confirmNavigationStart(duplicateStartedDirtyRef)) return;
     duplicateAgent.mutate();
-  }, [agent.name, duplicateAgent]);
+  }, [agent.name, duplicateAgent, t]);
 
   const resetTaskSession = useMutation({
     mutationFn: () => agentsApi.resetSession(agent.id, null, resolvedCompanyId ?? undefined),
@@ -357,7 +364,7 @@ export function AgentActionButtons({
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.taskSessions(agent.id) });
     },
     onError: (err) => {
-      reportError(err instanceof Error ? err.message : "Failed to reset session");
+      reportError(err instanceof Error ? err.message : t("agentDetail.resetSessionError"));
     },
   });
 
@@ -393,9 +400,9 @@ export function AgentActionButtons({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={() => agentAction.mutate("pause")}>
-            Pause anyway
+            {t("agentDetail.pauseAnyway")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -414,16 +421,16 @@ export function AgentActionButtons({
         {persistentProviderTrace ? (
           <span
             className="hidden items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary lg:inline-flex"
-            title="Exact provider traffic will be captured for future runs and retained for up to 24 hours."
+            title={t("agentDetail.rawTracingDescription")}
           >
             <Bug className="h-3.5 w-3.5" />
-            Raw tracing on
+            {t("agentDetail.rawTracingOn")}
           </span>
         ) : null}
         {children}
         <Popover open={moreOpen} onOpenChange={setMoreOpen}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`Open actions for ${agent.name}`}>
+            <Button variant="ghost" size="icon" aria-label={t("agentDetail.openAgentActions", { name: agent.name })}>
               <MoreHorizontal className="size-4" />
             </Button>
           </PopoverTrigger>
@@ -459,16 +466,16 @@ export function AgentActionButtons({
                 type="button"
                 className={cn(item, "text-destructive")}
                 disabled={clearErrorDisabled}
-                aria-label="Clear error and return agent to idle"
+                aria-label={t("agentDetail.clearAgentError")}
                 onClick={select(() => agentAction.mutate("clear_error"))}
               >
                 <CheckCircle2 className={cn(icon, "text-destructive")} />
-                Clear error
+                {t("agentDetail.clearError")}
               </button>
             ) : isPaused ? (
               <button type="button" className={item} disabled={pauseResumeDisabled} onClick={select(() => agentAction.mutate("resume"))}>
                 <Play className={icon} />
-                Resume
+                {t("agentDetail.resumeAgent")}
               </button>
             ) : (
               <button
@@ -478,7 +485,7 @@ export function AgentActionButtons({
                 onClick={select(() => (pauseConfirm ? setPauseConfirmOpen(true) : agentAction.mutate("pause")))}
               >
                 <Pause className={icon} />
-                Pause
+                {t("agentDetail.pauseAgent")}
               </button>
             )}
             <div role="separator" className="-mx-1 my-1 h-px bg-border" />
@@ -490,23 +497,23 @@ export function AgentActionButtons({
             ))}
             <button type="button" className={item} disabled={duplicateAgent.isPending} onClick={handleDuplicateAgent}>
               {duplicateAgent.isPending ? <Loader2 className={cn(icon, "animate-spin")} /> : <Copy className={icon} />}
-              Duplicate agent
+              {t("agentDetail.duplicateAgent")}
             </button>
             <button
               type="button"
               className={item}
               onClick={select(() => {
                 void copyTextToClipboard(agent.id).catch(() => {
-                  pushToast({ title: "Copy failed", body: "Clipboard access is unavailable.", tone: "error" });
+                  pushToast({ title: t("agentDetail.copyFailed"), body: t("agentDetail.clipboardUnavailable"), tone: "error" });
                 });
               })}
             >
               <Copy className={icon} />
-              Copy agent ID
+              {t("agentDetail.copyAgentIdSentence")}
             </button>
             <button type="button" className={item} onClick={select(() => resetTaskSession.mutate())}>
               <RotateCcw className={icon} />
-              Reset sessions
+              {t("agentDetail.resetSessions")}
             </button>
             {hideTerminate ? null : (
               <>
@@ -520,21 +527,21 @@ export function AgentActionButtons({
                   })}
                 >
                   <Trash2 className={cn(icon, "text-destructive")} />
-                  Terminate
+                  {t("agentDetail.terminateAgent")}
                 </button>
               </>
             )}
           </PopoverContent>
         </Popover>
-        {showChat && <Button variant="outline" size={size} aria-label={`Chat with ${agent.name}`} title="Chat with this agent"
+        {showChat && <Button variant="outline" size={size} aria-label={t("agentDetail.chatWithNamedAgent", { name: agent.name })} title={t("agentDetail.chatWithAgentTitle")}
           disabled={disabled} onClick={() => { if (!onBeforeNavigate || onBeforeNavigate()) navigate(`/chats/${canonicalAgentRef}`); }}>
           <MessagesSquare className="size-4" />
-          Chat
+          {t("nav.chat")}
         </Button>}
         {needsSetup ? (
           <Button size={size} disabled={disabled} onClick={finishSetup}>
             <Play className="size-4" />
-            Finish setup
+            {t("agentDetail.finishSetup")}
           </Button>
         ) : (
           <Button
@@ -557,10 +564,10 @@ export function AgentActionButtons({
       {persistentProviderTrace ? (
         <span
           className="hidden items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary lg:inline-flex"
-          title="Exact provider traffic will be captured for future runs and retained for up to 24 hours."
+          title={t("agentDetail.rawTracingDescription")}
         >
           <Bug className="h-3.5 w-3.5" />
-          Raw tracing on
+          {t("agentDetail.rawTracingOn")}
         </span>
       ) : null}
       <Button
@@ -582,7 +589,7 @@ export function AgentActionButtons({
             ...(agent.adapterType === "paperclip_runner" ? { runner: "paperclip" } : ["codex_local", "claude_local", "opencode_local", "pi_local"].includes(agent.adapterType) ? { runner: "legacy" } : {}),
             ...pendingAgentSetupChoice(agent),
           })}`);
-        }}>Finish setup</Button>
+        }}>{t("agentDetail.finishSetup")}</Button>
       ) : showRun && <RunButton
         onClick={() => {
           if (navigateToRunOnInvoke && !confirmNavigationStart(agentActionStartedDirtyRef)) return;
@@ -617,9 +624,9 @@ export function AgentActionButtons({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
               <AlertDialogAction onClick={() => agentAction.mutate("pause")}>
-                Pause anyway
+                {t("agentDetail.pauseAnyway")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -633,7 +640,7 @@ export function AgentActionButtons({
       {children}
       <Popover open={moreOpen} onOpenChange={setMoreOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon-xs" aria-label={`Open actions for ${agent.name}`}>
+          <Button variant="ghost" size="icon-xs" aria-label={t("agentDetail.openAgentActions", { name: agent.name })}>
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </PopoverTrigger>
@@ -648,19 +655,19 @@ export function AgentActionButtons({
             ) : (
               <Copy className="h-3 w-3" />
             )}
-            Duplicate Agent
+            {t("agentDetail.duplicateAgentTitle")}
           </button>
           <button
             className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
             onClick={() => {
               void copyTextToClipboard(agent.id).catch(() => {
-                pushToast({ title: "Copy failed", body: "Clipboard access is unavailable.", tone: "error" });
+                pushToast({ title: t("agentDetail.copyFailed"), body: t("agentDetail.clipboardUnavailable"), tone: "error" });
               });
               setMoreOpen(false);
             }}
           >
             <Copy className="h-3 w-3" />
-            Copy Agent ID
+            {t("agentDetail.copyAgentId")}
           </button>
           <button
             className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
@@ -670,7 +677,7 @@ export function AgentActionButtons({
             }}
           >
             <RotateCcw className="h-3 w-3" />
-            Reset Sessions
+            {t("agentDetail.resetSessionsTitle")}
           </button>
           {!hideTerminate && (
             <button
@@ -682,7 +689,7 @@ export function AgentActionButtons({
               }}
             >
               <Trash2 className="h-3 w-3" />
-              Terminate
+              {t("agentDetail.terminateAgent")}
             </button>
           )}
         </PopoverContent>

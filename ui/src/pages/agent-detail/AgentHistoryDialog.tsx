@@ -21,6 +21,7 @@ import { useNavigate } from "@/lib/router";
 import { queryKeys } from "@/lib/queryKeys";
 import { formatDate } from "@/lib/utils";
 import { syncAgentRouteAfterRename } from "./agent-route";
+import { useTranslation } from "@/i18n";
 
 const KEY_LABELS: Record<string, string> = {
   name: "name",
@@ -76,6 +77,7 @@ export function AgentHistoryDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [pending, setPending] = useState<AgentConfigRevision | null>(null);
@@ -99,28 +101,28 @@ export function AgentHistoryDialog({
   const restoreError = rollback.error
     ? rollback.error instanceof Error && rollback.error.message
       ? rollback.error.message
-      : "Could not restore that version."
+      : t("agentDetail.restoreHistoryError")
     : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-(--agent-detail-dialog-max-h) flex-col gap-5 sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="text-base">Agent history</DialogTitle>
-          <DialogDescription>Every saved change to {agent.name}&rsquo;s identity and configuration. Restore any version.</DialogDescription>
+          <DialogTitle className="text-base">{t("agentDetail.agentHistory")}</DialogTitle>
+          <DialogDescription>{t("agentDetail.historyDescription", { name: agent.name })}</DialogDescription>
         </DialogHeader>
         {error ? (
-          <p role="alert" className="text-sm text-destructive">{error instanceof Error ? error.message : "Could not load agent history."}</p>
+          <p role="alert" className="text-sm text-destructive">{error instanceof Error ? error.message : t("agentDetail.loadHistoryError")}</p>
         ) : isLoading ? (
-          <p role="status" className="text-sm text-muted-foreground">Loading agent history…</p>
+          <p role="status" className="text-sm text-muted-foreground">{t("agentDetail.loadingAgentHistory")}</p>
         ) : (revisions ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No saved changes yet.</p>
+          <p className="text-sm text-muted-foreground">{t("agentDetail.noSavedChangesYet")}</p>
         ) : (
           <div className="min-h-0 overflow-y-auto rounded-lg border border-border">
             <div className={`${agentTableHeadClass} grid-cols-(--agent-detail-history-cols)`}>
-              <span>Configuration</span>
-              <span>Team member</span>
-              <span>Date configured</span>
+              <span>{t("agentDetail.configuration")}</span>
+              <span>{t("agentDetail.teamMember")}</span>
+              <span>{t("agentDetail.dateConfigured")}</span>
               <span aria-hidden />
             </div>
             {(revisions ?? []).map((revision) => (
@@ -150,7 +152,7 @@ export function AgentHistoryDialog({
                   disabled={rollback.isPending}
                 >
                   <RotateCcw />
-                  Restore
+                  {t("common.restore")}
                 </Button>
               </div>
             ))}
@@ -163,10 +165,10 @@ export function AgentHistoryDialog({
       <AlertDialog open={pending !== null} onOpenChange={(next) => (next ? undefined : setPending(null))}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Restore this version?</AlertDialogTitle>
+            <AlertDialogTitle>{t("agentDetail.restoreThisVersion")}</AlertDialogTitle>
             <AlertDialogDescription>
               {pending
-                ? `Continuing will restore ${agent.name}’s identity and configuration to the version saved on ${formatDate(pending.createdAt)}. Anything changed since then will be replaced. The current version stays in Agent history.`
+                ? t("agentDetail.restoreHistoryDescription", { name: agent.name, date: formatDate(pending.createdAt) })
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -191,7 +193,7 @@ export function AgentHistoryDialog({
             <p role="alert" className="text-sm text-destructive">{restoreError}</p>
           ) : null}
           <AlertDialogFooter className="sm:justify-between">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={rollback.isPending}
               onClick={(event) => {

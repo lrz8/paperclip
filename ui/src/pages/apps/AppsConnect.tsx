@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { describeError } from "@/api/errors";
 import { useQuery } from "@tanstack/react-query";
 import { aiConnectionsApi } from "@/api/ai-connections";
@@ -24,6 +25,7 @@ export function AppsConnect({ byoOnly = false, credentialSource = "paperclip_vau
   byoOnly?: boolean;
   credentialSource?: ToolConnectionCredentialSource;
 } = {}) {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -65,10 +67,10 @@ export function AppsConnect({ byoOnly = false, credentialSource = "paperclip_vau
     navigate(`/apps/connect?${params.toString()}`, { replace: true });
   }, [legacyCopilotLink, searchParams, navigate]);
   if (legacyCopilotLink) return null;
-  if (reuseComposio && selectedCompanyId && (saved.isPending || savedView.kind === "reconnecting" || hasSavedComposio)) return <p role="status" className="text-sm text-muted-foreground">Checking saved Composio accounts…</p>;
+  if (reuseComposio && selectedCompanyId && (saved.isPending || savedView.kind === "reconnecting" || hasSavedComposio)) return <p role="status" className="text-sm text-muted-foreground">{t("apps.checkingComposio")}</p>;
   if (reuseComposio && savedView.kind === "error") return <div className="space-y-3">
     <QueryErrorState error={saved.error} action="load your Composio accounts" onRetry={savedView.retry} retrying={savedView.isFetching} />
-    <Button variant="ghost" onClick={() => navigate("/apps")}>Cancel</Button>
+    <Button variant="ghost" onClick={() => navigate("/apps")}>{t("common.cancel")}</Button>
   </div>;
   const returningToSkills = source === "github" && selectedCompanyId && skillSourceReturnPath(selectedCompanyId);
   function returnToSkills() {
@@ -76,18 +78,18 @@ export function AppsConnect({ byoOnly = false, credentialSource = "paperclip_vau
     if (path) navigate(path);
   }
   if (aiLoginId && selectedCompanyId) {
-    if (loginView.kind === "loading" || loginView.kind === "reconnecting") return <p role="status">Loading saved sign-in…</p>;
-    if (!login.data) return <p role="alert">{login.error ? describeError(login.error).body : "This sign-in is unavailable."}</p>;
+    if (loginView.kind === "loading" || loginView.kind === "reconnecting") return <p role="status">{t("apps.loadingSignIn")}</p>;
+    if (!login.data) return <p role="alert">{login.error ? describeError(login.error).body : t("apps.signInUnavailable")}</p>;
     const { intent, environmentId, connectionId, grantId } = login.data;
-    if (connectionId && grantId) return <div className="space-y-4"><p role="status">This account is connected.</p><Button onClick={() => navigate(`/apps/${connectionId}/permissions`)}>View connection</Button></div>;
+    if (connectionId && grantId) return <div className="space-y-4"><p role="status">{t("apps.accountConnected")}</p><Button onClick={() => navigate(`/apps/${connectionId}/permissions`)}>{t("apps.viewConnection")}</Button></div>;
     return <AiConnectionCredentialStep key={aiLoginId} companyId={selectedCompanyId} {...intent}
       agentIds={intent.agentIds ?? []} allAgents={intent.allAgents ?? false} initialMethod={intent.method} fixedMethod
       environmentId={environmentId} hideName onCancel={() => navigate("/apps")}
       onComplete={binding => navigate(`/apps/${binding.connectionId}/permissions`)} />;
   }
-  if (aiReconnectRequested && (aiAccountsView.kind === "loading" || aiAccountsView.kind === "reconnecting")) return <p role="status">Loading connection…</p>;
-  if (aiReconnectRequested && aiAccountsView.kind === "error") return <p role="alert">Could not load this connection. Refresh to try again.</p>;
-  if (aiReconnectRequested && !aiReconnect) return <p role="alert">This connection is unavailable. Return to Connectors to choose an account.</p>;
+  if (aiReconnectRequested && (aiAccountsView.kind === "loading" || aiAccountsView.kind === "reconnecting")) return <p role="status">{t("apps.loadingConnection")}</p>;
+  if (aiReconnectRequested && aiAccountsView.kind === "error") return <p role="alert">{t("apps.connectionLoadFailed")}</p>;
+  if (aiReconnectRequested && !aiReconnect) return <p role="alert">{t("apps.connectionUnavailable")}</p>;
   if (selectedCompanyId && (preset || aiReconnect?.routing)) return (
     <AiProviderSetup
       key={reconnectId ?? source}
@@ -101,19 +103,19 @@ export function AppsConnect({ byoOnly = false, credentialSource = "paperclip_vau
     />
   );
   if (source?.startsWith("ai-router-")) {
-    if (gallery.isPending || galleryView.kind === "reconnecting") return <p role="status">Loading connector…</p>;
+    if (gallery.isPending || galleryView.kind === "reconnecting") return <p role="status">{t("apps.loadingConnector")}</p>;
     if (galleryView.kind === "error") return <QueryErrorState error={gallery.error} action="load the connector" onRetry={galleryView.retry} retrying={galleryView.isFetching} />;
-    if (!router) return <p role="alert">This connection pool plugin is unavailable. Enable it in Plugins.</p>;
+    if (!router) return <p role="alert">{t("apps.poolUnavailable")}</p>;
     return <AiConnectionPoolConnector pluginKey={router.pluginKey} />;
   }
   // A plugin-provided connector is known only from the host gallery, which
   // also registers it for the setup flow's catalog lookups.
   if (pluginApp) {
-    if (gallery.isPending || galleryView.kind === "reconnecting") return <p role="status">Loading connector…</p>;
+    if (gallery.isPending || galleryView.kind === "reconnecting") return <p role="status">{t("apps.loadingConnector")}</p>;
     if (galleryView.kind === "error") return <QueryErrorState error={gallery.error} action="load the connector" onRetry={galleryView.retry} retrying={galleryView.isFetching} />;
     if (!gallery.data?.apps.some(app => app.slug === source)) return <div className="space-y-3">
-      <p role="alert">This connector is unavailable. Ask an instance admin to enable its plugin.</p>
-      <Button variant="ghost" onClick={() => navigate("/apps")}>Back to Connectors</Button>
+      <p role="alert">{t("apps.connectorUnavailable")}</p>
+      <Button variant="ghost" onClick={() => navigate("/apps")}>{t("apps.backToConnectors")}</Button>
     </div>;
   }
   return <ConnectionSetupFlow byoOnly={byoOnly} credentialSource={credentialSource} host="page"

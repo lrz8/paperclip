@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { connectionRemovalToast, GOOGLE_CONTENT_DELETION_NOTICE } from "@/features/connections/googleAccessRemoval";
 import { AGGREGATOR_NAMES, aggregatorManagementUrl, isAppAggregator, type AggregatorAppSnapshot, type AggregatorAppsResponse } from "@paperclipai/shared/aggregator-apps";
 import type { CatalogSource } from "./CatalogSourceFilters";
@@ -406,6 +407,7 @@ function accountActionHref(
  * account; unconnected providers retain the same catalog setup flows.
  */
 export function Browse({ renderAccountDetails = (connection) => connection.connectionPurpose === "ai" && !aiConnectionRouterPluginKey(connection) ? <ManagedAiConnectionRow connection={connection} /> : null }: { renderAccountDetails?: (connection: ToolConnection) => ReactNode } = {}) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const preselectedChatAgentId =
     typeof window === "undefined"
@@ -439,9 +441,9 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
     useState<ConnectionRemovalTarget | null>(null);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Connectors" }]);
+    setBreadcrumbs([{ label: t("nav.connectors") }]);
     return () => setBreadcrumbs([]);
-  }, [setBreadcrumbs]);
+  }, [setBreadcrumbs, t]);
 
   useEffect(() => { setQuery(""); setPage(1); setSource("paperclip"); setExpandedSearch(false); setArcadeToConfigure(null); setAggregatorToConnect(null); setAggregatorToManage(null); setInitialAggregatorProvider(undefined); setConnectionToRemove(null); }, [selectedCompanyId]);
   useEffect(() => {
@@ -1020,7 +1022,7 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
   if (!selectedCompanyId) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
-        Select an organization to manage connectors.
+        {t("apps.selectOrgForConnectors")}
       </div>
     );
   }
@@ -1057,25 +1059,25 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
         />
       ) : null}
 
-      {refreshAggregator.error ? <p role="alert" className="text-sm text-destructive">Couldn’t refresh the gateway. Last known accounts are shown.</p> : null}
+      {refreshAggregator.error ? <p role="alert" className="text-sm text-destructive">{t("apps.gatewayRefreshFailed")}</p> : null}
       {aiDefaultsView.kind === "error" && <QueryErrorState size="inline" error={aiDefaultsView.error} action="load AI account defaults"
         onRetry={aiDefaultsView.retry} retrying={aiDefaultsView.isFetching} />}
       {aiDefaults.error && aiDefaults.failedProvider && <AiDefaultError provider={AI_PROVIDERS[aiDefaults.failedProvider].name}
         pending={aiDefaults.pending(aiDefaults.failedProvider)} onRetry={aiDefaults.retry} />}
 
       {loading ? (
-        <div className="space-y-3" aria-label="Loading connectors">
+        <div className="space-y-3" aria-label={t("apps.loadingConnectors")}>
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-24 w-full rounded-xl" />
           ))}
         </div>
       ) : nothingMatches ? (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-          <p className="flex items-center gap-2"><Link2 className="h-4 w-4" />No connectors match “{query.trim()}”.</p>
-          <Button variant="outline" size="sm" onClick={() => changeQuery("")}>Clear search</Button>
+          <p className="flex items-center gap-2"><Link2 className="h-4 w-4" />{t("apps.noConnectorMatch", { query: query.trim() })}</p>
+          <Button variant="outline" size="sm" onClick={() => changeQuery("")}>{t("apps.clearSearch")}</Button>
         </div>
       ) : (
-        <div className={cn("space-y-3", ANALYTICS_MASK_CLASS)} role="list" aria-label="Connector list">
+        <div className={cn("space-y-3", ANALYTICS_MASK_CLASS)} role="list" aria-label={t("apps.connectorList")}>
           {showAssistantConnection && <AssistantConnectionCard onNavigate={navigate} />}
           {paginatedRows.map((row) => (
             row.networkConnections ? <TailscaleConnectorCard key={row.key} onNavigate={navigate} /> : <ConnectorCard
@@ -1110,14 +1112,14 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
         </div>
       )}
 
-      {accountLoadErrors.length ? <p role="alert" className="text-sm text-destructive">Couldn’t load {Array.from(new Set(accountLoadErrors)).join(" or ")} accounts. Use Refresh in the connection’s menu to try again.</p> : null}
+      {accountLoadErrors.length ? <p role="alert" className="text-sm text-destructive">{t("apps.aggregatorAccountsLoadFailed", { providers: Array.from(new Set(accountLoadErrors)).join(t("apps.alternativeJoin")) })}</p> : null}
 
-      {!loading && catalogRows.length > 0 ? <nav aria-label="Connector catalog pages" className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <p className="text-muted-foreground" role="status">{pageStart + 1}–{Math.min(pageStart + CATALOG_PAGE_SIZE, catalogRows.length)} of {catalogRows.length.toLocaleString()} connectors</p>
+      {!loading && catalogRows.length > 0 ? <nav aria-label={t("apps.catalogPages")} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <p className="text-muted-foreground" role="status">{t("apps.connectorRange", { start: pageStart + 1, end: Math.min(pageStart + CATALOG_PAGE_SIZE, catalogRows.length), total: catalogRows.length.toLocaleString() })}</p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => { setPage(currentPage - 1); catalogTop.current?.scrollIntoView?.({ block: "start" }); }}>Previous</Button>
-          <span className="text-xs text-muted-foreground">Page {currentPage} of {pageCount}</span>
-          <Button variant="outline" size="sm" disabled={currentPage === pageCount} onClick={() => { setPage(currentPage + 1); catalogTop.current?.scrollIntoView?.({ block: "start" }); }}>Next</Button>
+          <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => { setPage(currentPage - 1); catalogTop.current?.scrollIntoView?.({ block: "start" }); }}>{t("apps.previousPage")}</Button>
+          <span className="text-xs text-muted-foreground">{t("apps.catalogPage", { current: currentPage, total: pageCount })}</span>
+          <Button variant="outline" size="sm" disabled={currentPage === pageCount} onClick={() => { setPage(currentPage + 1); catalogTop.current?.scrollIntoView?.({ block: "start" }); }}>{t("common.next")}</Button>
         </div>
       </nav> : null}
 
@@ -1139,17 +1141,17 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
         <AlertDialogContent className={ANALYTICS_MASK_CLASS}>
           <AlertDialogHeader>
             <AlertDialogTitle className={ANALYTICS_MASK_CLASS}>
-              Remove {connectionToRemove?.accountName ?? "this"} connection?
+              {t("apps.confirmRemoveConnection", { name: connectionToRemove?.accountName ?? t("apps.thisConnection") })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {connectionToRemove?.pool ? "The connections in this pool are kept." : connectionToRemove && Object.values(AGGREGATOR_NAMES).includes(connectionToRemove.providerName as "Composio")
-                ? `This removes the saved ${connectionToRemove.providerName} connection from Paperclip and agents lose access through it. Your apps and accounts remain connected in ${connectionToRemove.providerName}.`
+              {connectionToRemove?.pool ? t("apps.removePoolDescription") : connectionToRemove && Object.values(AGGREGATOR_NAMES).includes(connectionToRemove.providerName as "Composio")
+                ? t("apps.removeAggregatorDescription", { provider: connectionToRemove.providerName })
                 : connectionToRemove?.kind === "chat"
-                ? `This connection will stop receiving new work from ${connectionToRemove.providerName}. Existing Paperclip tasks and conversation history remain available. This does not delete the app, bot, or account in ${connectionToRemove.providerName}.`
+                ? t("apps.removeChatDescription", { provider: connectionToRemove.providerName })
                 : connectionToRemove &&
                     connectionToRemove.remainingConnectionCount > 0
-                  ? `This connection's saved credentials are deleted and agents lose access through it immediately. They can still use ${connectionToRemove.providerName} through ${connectionToRemove.remainingConnectionCount} other active ${connectionToRemove.remainingConnectionCount === 1 ? "connection" : "connections"}.`
-                  : "The saved credentials are deleted and agents lose access immediately. Connecting it again later requires a new sign-in or key."}
+                  ? t("apps.removeOneOfConnectionsDescription", { provider: connectionToRemove.providerName, count: connectionToRemove.remainingConnectionCount })
+                  : t("apps.removeCredentialsDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {connectionToRemove?.googleWorkspace ? (
@@ -1163,9 +1165,9 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
                 onCheckedChange={(checked) => setDeleteStoredContent(checked === true)}
               />
               <span>
-                Also delete data read through this connection
+                {t("apps.deleteConnectionData")}
                 <span className="block text-xs text-muted-foreground">
-                  Permanently removes saved tool results and the transcripts of runs that used it. This cannot be undone.
+                  {t("apps.deleteConnectionDataDescription")}
                 </span>
               </span>
             </label>
@@ -1175,7 +1177,7 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
           </p> : null}
           <AlertDialogFooter className="sm:justify-between">
             <AlertDialogCancel disabled={removeConnection.isPending}>
-              Cancel
+              {t("common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -1191,7 +1193,7 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
               ) : (
                 <Trash2 />
               )}
-              {removeConnection.isPending ? "Removing…" : "Remove connection"}
+              {removeConnection.isPending ? t("apps.removingConnection") : t("apps.removeConnection")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1250,6 +1252,7 @@ export function ConnectorCard({
   defaultExpanded?: boolean;
   searchQuery?: string;
 }) {
+  const { t } = useTranslation();
   // The user's toggle only applies while the default it overrode still holds, so a new search reopens the list.
   const [expandedOverride, setExpandedOverride] = useState<{ open: boolean; defaultExpanded: boolean } | null>(null);
   useEffect(() => {
@@ -1335,8 +1338,8 @@ export function ConnectorCard({
         {collapsible ? (
           <CollapsibleTrigger className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-left text-sm text-muted-foreground hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
             <ChevronRight className={`h-4 w-4 shrink-0 transition-transform${expanded ? " rotate-90" : ""}`} aria-hidden="true" />
-            <span className="font-medium text-foreground">{connectionCount} connections</span>
-            {attentionCount > 0 ? <span className="text-destructive">· {attentionCount} {attentionCount === 1 ? "needs" : "need"} attention</span> : null}
+            <span className="font-medium text-foreground">{t("apps.connectionCount", { count: connectionCount })}</span>
+            {attentionCount > 0 ? <span className="text-destructive">· {t("apps.attentionCount", { count: attentionCount })}</span> : null}
           </CollapsibleTrigger>
         ) : null}
         <CollapsibleContent>
@@ -1472,7 +1475,7 @@ export function ConnectorCard({
                           })}
                         >
                           <Trash2 />
-                          Remove connection
+                          {t("apps.removeConnection")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1516,6 +1519,7 @@ function ConnectionAccountRow({
   onConfigureExecutor?: () => void;
   setupEnabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const state = connectionState(connection);
   const actionHref = accountActionHref(row, connection);
   const accountName = connectionDisplayNameForOwner(
@@ -1528,8 +1532,8 @@ function ConnectionAccountRow({
   return (
     <ConnectionAccountRowLayout state={state} accountName={accountName} owner={owner}
       afterName={account?.isDefault ? <AiDefaultCrown account={account} /> : undefined}
-      details={<>{details}{account?.isDefault && account.status !== "connected" && <p className="text-xs text-destructive">Default unavailable</p>}{discovery?.discovery.message || discovery?.sync.status === "error" ? <p className="text-xs text-muted-foreground" role="status">{discovery.discovery.message ?? discovery.sync.error}</p> : null}</>}
-      openLabel={`Open ${accountName} permissions`} onOpen={() => onNavigate(`/apps/${connection.id}/permissions`)}>
+      details={<>{details}{account?.isDefault && account.status !== "connected" && <p className="text-xs text-destructive">{t("connections.defaultUnavailable")}</p>}{discovery?.discovery.message || discovery?.sync.status === "error" ? <p className="text-xs text-muted-foreground" role="status">{discovery.discovery.message ?? discovery.sync.error}</p> : null}</>}
+      openLabel={t("apps.openPermissions", { name: accountName })} onOpen={() => onNavigate(`/apps/${connection.id}/permissions`)}>
         {setupEnabled && (state.kind === "attention" || state.kind === "draft") ? (
           <Button
             type="button"
@@ -1539,9 +1543,9 @@ function ConnectionAccountRow({
           >
             {state.kind === "attention"
               ? connection.requiresReauthorization === false
-                ? "Retry access"
-                : "Reconnect"
-              : "Finish setup"}
+                ? t("apps.retryAccess")
+                : t("connections.reconnect")
+              : t("apps.finishSetup")}
           </Button>
         ) : null}
         <DropdownMenu>
@@ -1550,7 +1554,7 @@ function ConnectionAccountRow({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={`Manage ${accountName} connection`}
+              aria-label={t("apps.manageAccountConnection", { name: accountName })}
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -1561,18 +1565,18 @@ function ConnectionAccountRow({
             <DropdownMenuItem
               onSelect={() => onNavigate(`/apps/${connection.id}/permissions`)}
             >
-              Permissions
+              {t("apps.permissions")}
             </DropdownMenuItem>
             {onRefreshComposio ? <DropdownMenuItem disabled={refreshingComposio} onSelect={onRefreshComposio}>
               {refreshingComposio ? <Loader2 className="animate-spin" /> : null}
               Refresh {isAppAggregator(row.slug) ? AGGREGATOR_NAMES[row.slug] : "Composio"}
             </DropdownMenuItem> : null}
-            {row.slug === "arcade" && onConfigureArcade ? <DropdownMenuItem onSelect={onConfigureArcade}>{discovery?.discovery.availability === "setup_required" ? "Set up account sync" : "Account sync settings"}</DropdownMenuItem> : null}
-            {row.slug === "executor" && onConfigureExecutor ? <DropdownMenuItem onSelect={onConfigureExecutor}>Console URL</DropdownMenuItem> : null}
+            {row.slug === "arcade" && onConfigureArcade ? <DropdownMenuItem onSelect={onConfigureArcade}>{discovery?.discovery.availability === "setup_required" ? t("apps.accountSyncSetup") : t("apps.accountSyncSettings")}</DropdownMenuItem> : null}
+            {row.slug === "executor" && onConfigureExecutor ? <DropdownMenuItem onSelect={onConfigureExecutor}>{t("apps.consoleUrl")}</DropdownMenuItem> : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={onRemove}>
               <Trash2 />
-              Remove connection
+              {t("apps.removeConnection")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1668,6 +1672,7 @@ function CustomConnectorCard({
 }: {
   onNavigate: (href: string) => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -1682,10 +1687,10 @@ function CustomConnectorCard({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">
-            Connect your own tool
+            {t("apps.customTool")}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Add a custom MCP server or paste an existing configuration.
+            {t("apps.customToolDescription")}
           </p>
         </div>
         <Button
@@ -1696,7 +1701,7 @@ function CustomConnectorCard({
           aria-controls="custom-connector-options"
           onClick={() => setExpanded((open) => !open)}
         >
-          {expanded ? "Close" : "Connect"}
+          {expanded ? t("common.close") : t("onboarding.connect")}
         </Button>
       </div>
 
@@ -1707,14 +1712,14 @@ function CustomConnectorCard({
         >
           <CustomConnectorOption
             icon={ServerCog}
-            title="Connect your own MCP server"
-            description="Enter the URL for a custom or self-hosted MCP server."
+            title={t("apps.customMcp")}
+            description={t("apps.customMcpDescription")}
             onClick={() => onNavigate("/apps/byo")}
           />
           <CustomConnectorOption
             icon={ClipboardPaste}
-            title="Paste a config"
-            description="Paste an existing setup snippet and connect it."
+            title={t("apps.pasteConfig")}
+            description={t("apps.pasteConfigDescription")}
             onClick={() => onNavigate("/apps/advanced/paste-config")}
           />
         </div>

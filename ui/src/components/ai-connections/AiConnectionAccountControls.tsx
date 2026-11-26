@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useState, type ReactNode } from "react";
 import { RefreshCw, Unplug } from "lucide-react";
 import type { ConnectionGrant } from "@paperclipai/shared";
@@ -24,6 +25,7 @@ export function AiConnectionAccountControls({
   onRevoke: () => void | Promise<void>;
   revocationDetails?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [revoking, setRevoking] = useState(false);
   const [revokePending, setRevokePending] = useState(false);
   const [revokeError, setRevokeError] = useState<string>();
@@ -32,7 +34,7 @@ export function AiConnectionAccountControls({
   const activeDefault = account.isDefault && available;
   const providerName = AI_PROVIDERS[account.provider].name;
   return (
-    <section className="space-y-4" aria-label="AI account settings">
+    <section className="space-y-4" aria-label={t("connections.accountSettings")}>
       {eligibleForDefault && (
         <div className={cn(
           "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3",
@@ -40,26 +42,26 @@ export function AiConnectionAccountControls({
         )}>
           <div className="flex items-center gap-3">
             {account.isDefault && <AiDefaultCrown account={account} />}
-            <h3 role={account.isDefault ? "status" : undefined} className={cn("text-sm font-semibold", account.isDefault && !available && "text-destructive")}>{account.isDefault ? available ? `Default for ${providerName}` : "Default unavailable" : `Your ${providerName} default`}</h3>
+            <h3 role={account.isDefault ? "status" : undefined} className={cn("text-sm font-semibold", account.isDefault && !available && "text-destructive")}>{account.isDefault ? available ? t("connections.defaultForProvider", { provider: providerName }) : t("connections.defaultUnavailable") : t("connections.yourProviderDefault", { provider: providerName })}</h3>
           </div>
           {!account.isDefault && (!readOnly && account.canSetDefault ? (
-            <Button variant="outline" size="sm" disabled={!available || Boolean(account.unavailableReason) || defaultPending} onClick={onMakeDefault}>Set as default for {providerName}</Button>
-          ) : <span className="text-xs text-muted-foreground">Not default</span>)}
+            <Button variant="outline" size="sm" disabled={!available || Boolean(account.unavailableReason) || defaultPending} onClick={onMakeDefault}>{t("connections.setDefaultForProvider", { provider: providerName })}</Button>
+          ) : <span className="text-xs text-muted-foreground">{t("connections.notDefault")}</span>)}
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 text-sm">
-          <p className={cn("break-words text-xs text-muted-foreground", ANALYTICS_MASK_CLASS)}>{account.method === "subscription" ? "Subscription" : "API key"}{account.accountLabel ? ` · ${account.accountLabel}` : ""}</p>
+          <p className={cn("break-words text-xs text-muted-foreground", ANALYTICS_MASK_CLASS)}>{account.method === "subscription" ? t("connections.subscription") : t("onboarding.apiKey")}{account.accountLabel ? ` · ${account.accountLabel}` : ""}</p>
         </div>
         {!readOnly && grant.capabilities?.canRevoke && (
           <div className="flex flex-wrap items-center gap-2">
-            {<Button variant="outline" size="sm" onClick={onReconnect}><RefreshCw className="size-4" aria-hidden />Reconnect</Button>}
-            {account.status !== "revoked" && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setRevoking(true)}><Unplug className="size-4" aria-hidden />Revoke identity</Button>}
+            {<Button variant="outline" size="sm" onClick={onReconnect}><RefreshCw className="size-4" aria-hidden />{t("connections.reconnect")}</Button>}
+            {account.status !== "revoked" && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setRevoking(true)}><Unplug className="size-4" aria-hidden />{t("connections.revokeIdentity")}</Button>}
           </div>
         )}
       </div>
       {revoking && <RevokeGrantDialog grant={grant} providerName={account.name} pending={revokePending} credentialPolicy={account.ownership === "shared" ? "shared" : "per_user"} isOwnIdentity={account.ownerUserId === currentUserId}
-        description="New runs using this account will be blocked. Existing runs may retain credentials already issued to them. No other account will be selected automatically."
+        description={t("connections.revokeDescription")}
         onCancel={() => setRevoking(false)} onConfirm={async () => { setRevokePending(true); setRevokeError(undefined); try { await onRevoke(); setRevoking(false); } catch (error) { setRevokeError(describeError(error).body); } finally { setRevokePending(false); } }}>{revokeError && <p role="alert" className="text-sm text-destructive">{revokeError}</p>}{revocationDetails}</RevokeGrantDialog>}
     </section>
   );

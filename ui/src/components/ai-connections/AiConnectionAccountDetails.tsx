@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import type { AiManagedConnectionSummary, ConnectionGrant } from "@paperclipai/shared";
 import { aiConnectionsApi } from "@/api/ai-connections";
@@ -13,6 +14,7 @@ export function AiConnectionAccountDetails({ account, grant }: {
   account: AiManagedConnectionSummary;
   grant: ConnectionGrant;
 }) {
+  const { t } = useTranslation();
   const isChatGpt = account.provider === "openai" && account.method === "subscription" && !account.routing;
   const canLookUp = !account.routing && (account.provider === "anthropic" || isChatGpt) && account.method === "subscription" && account.status === "connected";
   const identity = useQuery({
@@ -26,23 +28,23 @@ export function AiConnectionAccountDetails({ account, grant }: {
   const message = identity.error ? describeError(identity.error).body : identity.data?.message;
   const retryable = identity.isError || identity.data?.status === "error";
   return (
-    <section className="space-y-3" aria-label="Connected account">
-      <h3 className="text-sm font-semibold">Connected account</h3>
+    <section className="space-y-3" aria-label={t("connections.connectedAccount")}>
+      <h3 className="text-sm font-semibold">{t("connections.connectedAccount")}</h3>
       <dl className="grid grid-cols-2 gap-3 text-sm">
-        <dt className="text-muted-foreground">{AI_PROVIDERS[account.provider].name} account</dt>
-        <dd className={cn("break-words", ANALYTICS_MASK_CLASS)}>{accountLabel ?? "Not available"}</dd>
+        <dt className="text-muted-foreground">{t("connections.providerAccount", { provider: AI_PROVIDERS[account.provider].name })}</dt>
+        <dd className={cn("break-words", ANALYTICS_MASK_CLASS)}>{accountLabel ?? t("connections.notAvailable")}</dd>
         {(isChatGpt || identity.data?.organizationLabel) && <>
-          <dt className="text-muted-foreground">{isChatGpt ? "ChatGPT workspace" : "Organization"}</dt>
-          <dd className={cn("break-words", ANALYTICS_MASK_CLASS)}>{identity.data?.organizationLabel ?? (identity.isPending && canLookUp ? "Checking…" : "Not available")}</dd>
+          <dt className="text-muted-foreground">{isChatGpt ? t("connections.chatGptWorkspace") : t("nav.organization")}</dt>
+          <dd className={cn("break-words", ANALYTICS_MASK_CLASS)}>{identity.data?.organizationLabel ?? (identity.isPending && canLookUp ? t("connections.checking") : t("connections.notAvailable"))}</dd>
         </>}
-        <dt className="text-muted-foreground">Sign-in method</dt>
+        <dt className="text-muted-foreground">{t("connections.signInMethod")}</dt>
         <dd>{aiMethodLabel(account.provider, account.method)}</dd>
-        <dt className="text-muted-foreground">Access</dt>
-        <dd>{account.ownership === "shared" ? "Company shared" : `Personal · ${account.ownerName ?? "Account owner"}`}</dd>
+        <dt className="text-muted-foreground">{t("connections.accountAccess")}</dt>
+        <dd>{account.ownership === "shared" ? t("connections.sharedAccount") : t("connections.personalOwnedAccount", { owner: account.ownerName ?? t("connections.accountOwner") })}</dd>
       </dl>
-      {canLookUp && identity.isPending && <p role="status" className="text-xs text-muted-foreground">Checking account details…</p>}
+      {canLookUp && identity.isPending && <p role="status" className="text-xs text-muted-foreground">{t("connections.checkingAccount")}</p>}
       {message && <p role={retryable ? "alert" : undefined} className="text-xs text-muted-foreground">{message}</p>}
-      {retryable && <Button variant="outline" size="sm" disabled={identity.isFetching} onClick={() => void identity.refetch()}>Retry account check</Button>}
+      {retryable && <Button variant="outline" size="sm" disabled={identity.isFetching} onClick={() => void identity.refetch()}>{t("connections.retryAccount")}</Button>}
     </section>
   );
 }
