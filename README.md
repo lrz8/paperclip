@@ -417,6 +417,8 @@ pnpm install
 pnpm dev
 ```
 
+For the personal fork's compiled releases, systemd templates, and source update flow, see [Personal source deployment](scripts/local-deployment/README.md).
+
 This starts the UI and API at `http://localhost:3100`. An embedded PostgreSQL database is created automatically — no setup required.
 
 > **Requirements:** Node.js 24.11+, pnpm 9.15+

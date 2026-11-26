@@ -1,0 +1,26 @@
+[Unit]
+Description=Paperclip source release
+After=network.target
+
+[Service]
+Type=exec
+User=paperclip
+Group=paperclip
+WorkingDirectory=/srv/paperclip/current
+EnvironmentFile=/etc/paperclip/paperclip.env
+ExecStart=/usr/bin/tini -s -- /usr/bin/node server/dist-runtime/index.mjs
+UMask=0077
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivatePIDs=yes
+PrivateTmp=yes
+InaccessiblePaths=-/run/docker.sock -/run/podman/podman.sock
+StateDirectory=paperclip
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=300
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
