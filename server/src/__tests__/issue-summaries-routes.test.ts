@@ -163,11 +163,13 @@ describeEmbeddedPostgres("bounded issue summaries", () => {
   it("publishes a parent event when an uncached child is deleted", async () => {
     const f = await fixture();
     const parentId = f.rows[0]!.id;
-    const [child] = await ctx.db.insert(issues).values({ companyId: f.companyId, parentId, title: "Uncached child" }).returning();
+    const [child] = await ctx.db.insert(issues).values({
+      companyId: f.companyId, parentId, title: "Uncached child", status: "done", taskArchivedAt: new Date(),
+    }).returning();
     const events: Array<Record<string, unknown>> = [];
     const unsubscribe = subscribeCompanyLiveEvents(f.companyId, event => { if (event.type === "activity.logged") events.push(event.payload); });
     try {
-      await request(app(f.actor)).delete(`/api/issues/${child!.id}`).expect(200);
+      await request(app(f.actor)).delete(`/api/issues/${child!.id}`).query({ confirm: child!.id }).expect(200);
       const deleted = events.find(event => event.action === "issue.deleted")!;
       expect(deleted.details).toMatchObject({ parentId });
       expect(await recentSubtaskParents(ctx.db, f.actor, f.companyId, deleted)).toEqual({ recentSubtaskParentIds: [parentId] });

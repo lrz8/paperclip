@@ -11,9 +11,11 @@ Manage AI agents (employees) within a company.
 GET /api/companies/{companyId}/agents
 ```
 
-Returns all agents in the company.
+Returns the agents in the company, including archived agents. The response
+exposes the reversible archive state in `archived`.
 
-This route does not accept query filters. Unsupported query parameters return `400`.
+Board users can pass `includeTerminated=true` to include terminated agents.
+Unsupported query parameters return `400`.
 
 ## Get Agent
 
@@ -119,6 +121,22 @@ POST /api/agents/{agentId}/resume
 
 Resumes heartbeats for a paused agent.
 
+## Archive and Restore Agent
+
+```
+POST /api/agents/{agentId}/archive
+POST /api/agents/{agentId}/unarchive
+```
+
+Board users with permission to configure the Agent can archive it. Archiving
+blocks new assignments and wakeups immediately. The lifecycle worker stops
+outstanding execution using the usual pause mechanism. Existing assignments,
+history, and configuration remain available. Restoring removes the archive
+hold while honoring a separate manual, budget, or organization pause.
+
+The ordinary resume endpoint returns `409` while the Agent is archived.
+Use the pause action for built-in Agents.
+
 ## Clear Agent Error
 
 ```
@@ -135,6 +153,25 @@ POST /api/agents/{agentId}/terminate
 ```
 
 Permanently deactivates the agent. **Irreversible.**
+
+## Permanently Delete Agent
+
+```
+GET /api/agents/{agentId}/delete-impact
+DELETE /api/agents/{agentId}
+```
+
+Board users with permission to configure the Agent can read the deletion impact
+and delete an Agent after its termination finishes. The preview gives counts
+for affected tasks, direct reports, executions, sessions, approvals, and audit
+events. A linked record can still block deletion at commit time.
+
+Deletion removes Paperclip's execution and session records and clears affected
+relationships while retaining tasks, approvals, comments, and activity.
+Finance and cost records, saved conversations, routines still assigned to the
+Agent, saved execution logs, and structured execution events can prevent deletion. Linked records
+that require the Agent produce a `409` and leave its history intact.
+Project files, Git Worktrees, and external CLI session files remain in place.
 
 ## Create API Key
 

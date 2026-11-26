@@ -3535,6 +3535,7 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
       return recheckUsageWaitOnReply(await wakeQueue.admitIssueWake(
         { companyId: agent.companyId, issueId, durableChatRequest: durableRequest },
         async (tx, { lockedIssue, lockIssue, prepareRecovery }) => {
+          if (lockedIssue?.taskArchivedAt || (lockedIssue?.conversationAgentId && lockedIssue.hiddenAt)) return { kind: "skipped" as const };
           if (executionWaitRequestId) {
             const [pending] = await tx.select().from(agentWakeupRequests).where(and(
               eq(agentWakeupRequests.id, executionWaitRequestId), eq(agentWakeupRequests.companyId, agent.companyId),
@@ -3809,6 +3810,8 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
             });
             return { kind: "skipped" as const };
           }
+
+          if (issue.taskArchivedAt || (issue.conversationAgentId && issue.hiddenAt)) return { kind: "skipped" as const };
 
           // Completion can settle the conversation while admission is outside
           // the issue lock. Recheck the current state before persisting a wake.

@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { HeartbeatRun, RoutineRunSummary } from "@paperclipai/shared";
 import { Activity, CircleDotDashed } from "lucide-react";
 import { agentsApi } from "@/api/agents";
@@ -9,6 +9,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { QueryErrorState, useQueryView, type QueryViewState } from "@/components/QueryView";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { canArchiveRun, RunLifecycleMenu, useRunLifecycleAction } from "@/components/run-log/RunLifecycleMenu";
+import { useTranslation } from "@/i18n";
 import {
   Select,
   SelectContent,
@@ -21,7 +25,7 @@ import { Link, useSearchParams } from "@/lib/router";
 import { relativeTime } from "@/lib/utils";
 
 const ALL = "__all";
-const RUN_LIMIT = 200;
+const RUN_LIMIT = 100;
 
 function runSummary(run: HeartbeatRun) {
   const result = run.resultJson as { summary?: unknown; result?: unknown } | null;
@@ -139,21 +143,28 @@ export function AuditRuns({
   lockedAgentId?: string;
   hideHeader?: boolean;
 }) {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const agentId = lockedAgentId ?? searchParams.get("agentId") ?? ALL;
   const status = searchParams.get("runStatus") ?? ALL;
+  const archive = searchParams.get("runArchive") === "archived" ? "archived" : "active";
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const batch = useRunLifecycleAction(companyId);
   const agents = useQuery({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
     enabled: !routineId,
   });
-  const runs = useQuery({
-    queryKey: queryKeys.audit.runs(companyId, agentId === ALL ? null : agentId),
-    queryFn: () =>
+  const runs = useInfiniteQuery({
+    queryKey: [...queryKeys.audit.runs(companyId, agentId === ALL ? null : agentId), archive],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
       heartbeatsApi.list(companyId, agentId === ALL ? undefined : agentId, RUN_LIMIT, {
-        summary: true,
+        summary: true, archive, beforeRunId: pageParam,
       }),
-    refetchInterval: 15_000,
+    getNextPageParam: (page) => page.length === RUN_LIMIT ? page.at(-1)?.id : undefined,
+    refetchInterval: (query) => archive === "active" && query.state.data?.pages.length === 1 ? 15_000 : false,
     enabled: !routineId,
   });
   const routineRuns = useQuery({
@@ -168,16 +179,25 @@ export function AuditRuns({
     () => new Map((agents.data ?? []).map((agent) => [agent.id, agent])),
     [agents.data],
   );
+  const loadedRuns = useMemo(() => runs.data?.pages.flat() ?? [], [runs.data]);
   const statuses = useMemo(
-    () => Array.from(new Set((runs.data ?? []).map((run) => run.status))).sort(),
-    [runs.data],
+    () => Array.from(new Set(loadedRuns.map((run) => run.status))).sort(),
+    [loadedRuns],
   );
   const visibleRuns = useMemo(
-    () => (runs.data ?? []).filter((run) => status === ALL || run.status === status),
-    [runs.data, status],
+    () => {
+      const needle = search.trim().toLowerCase();
+      return loadedRuns.filter((run) => (status === ALL || run.status === status) && (!needle ||
+        [run.id, agentById.get(run.agentId)?.name, run.contextSnapshot?.taskKey, runSummary(run)]
+          .some((value) => typeof value === "string" && value.toLowerCase().includes(needle))));
+    },
+    [loadedRuns, status, search, agentById],
   );
+  const visibleIds = new Set(visibleRuns.filter((run) => canArchiveRun(run)).map((run) => run.id));
+  const visibleSelected = selected.filter((id) => visibleIds.has(id));
 
-  const updateFilter = (key: "agentId" | "runStatus", value: string) => {
+  const updateFilter = (key: "agentId" | "runStatus" | "runArchive", value: string) => {
+    setSelected([]);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -190,11 +210,14 @@ export function AuditRuns({
   };
 
   const clearFilters = () => {
+    setSearch("");
+    setSelected([]);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
         next.delete("agentId");
         next.delete("runStatus");
+        next.delete("runArchive");
         return next;
       },
       { replace: true },
@@ -214,7 +237,7 @@ export function AuditRuns({
     <div className="space-y-4">
       {hideHeader ? null : (
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Runs</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t("runLifecycle.runs")}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Recent agent executions across the organization. Open a run to inspect its transcript,
             output, and task context.
@@ -223,6 +246,17 @@ export function AuditRuns({
       )}
 
       <div data-canonical-toolbar="audit-runs" role="toolbar" aria-label="Audit filters" className="flex flex-wrap items-end gap-3 border-y border-border py-3">
+        <label className="grid gap-1 text-(length:--text-micro) font-medium text-muted-foreground">
+          {t("runLifecycle.archiveFilter")}
+          <Select value={archive} onValueChange={(value) => updateFilter("runArchive", value === "active" ? ALL : value)}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">{t("runLifecycle.active")}</SelectItem>
+              <SelectItem value="archived">{t("runLifecycle.archived")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+        <Input className="w-56 max-w-full" type="search" aria-label={t("runLifecycle.search")} placeholder={t("runLifecycle.search")} value={search} onChange={(event) => setSearch(event.target.value)} />
         {lockedAgentId ? null : <label className="grid gap-1 text-(length:--text-micro) font-medium text-muted-foreground">
           <span>Agent</span>
           <Select value={agentId} onValueChange={(value) => updateFilter("agentId", value)}>
@@ -255,11 +289,16 @@ export function AuditRuns({
             </SelectContent>
           </Select>
         </label>
-        {(!lockedAgentId && agentId !== ALL) || status !== ALL ? (
+        {(!lockedAgentId && agentId !== ALL) || status !== ALL || archive === "archived" || search ? (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             Clear filters
           </Button>
         ) : null}
+        {visibleSelected.length > 0 && <Button size="sm" variant="outline" disabled={batch.isPending} onClick={() => {
+          batch.mutate({ action: archive === "archived" ? "restore" : "archive", runIds: visibleSelected }, {
+            onSuccess: () => setSelected([]),
+          });
+        }}>{t(archive === "archived" ? "runLifecycle.batchRestore" : "runLifecycle.batchArchive", { count: visibleSelected.length })}</Button>}
       </div>
 
       {runsView.kind === "loading" || runsView.kind === "reconnecting" ? (
@@ -276,7 +315,7 @@ export function AuditRuns({
       ) : visibleRuns.length === 0 ? (
         <EmptyState
           icon={agentId !== ALL || status !== ALL ? CircleDotDashed : Activity}
-          message={agentId !== ALL || status !== ALL ? "No runs match these filters." : "No runs yet."}
+          message={t("runLifecycle.noMatches")}
         />
       ) : (
         <ul className="divide-y divide-border border-y border-border" aria-label="Recent runs">
@@ -285,10 +324,15 @@ export function AuditRuns({
             const summary = runSummary(run);
             const duration = runDuration(run);
             return (
-              <li key={run.id}>
+              <li key={run.id} className="flex items-center gap-2 px-2">
+                {canArchiveRun(run) && <Checkbox
+                  aria-label={t("runLifecycle.select", { id: run.id.slice(0, 8) })}
+                  checked={selected.includes(run.id)} disabled={batch.isPending}
+                  onCheckedChange={(checked) => setSelected((previous) => checked ? [...previous, run.id] : previous.filter((id) => id !== run.id))}
+                />}
                 <Link
                   to={`/agents/${run.agentId}/runs/${run.id}`}
-                  className="flex flex-col gap-2 px-1 py-3 text-inherit no-underline transition-colors hover:bg-muted/50 sm:flex-row sm:items-start sm:justify-between sm:px-3"
+                  className="flex min-w-0 flex-1 flex-col gap-2 px-1 py-3 text-inherit no-underline transition-colors hover:bg-muted/50 sm:flex-row sm:items-start sm:justify-between sm:px-3"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -312,13 +356,16 @@ export function AuditRuns({
                     </time>
                   </div>
                 </Link>
+                <RunLifecycleMenu run={run} />
               </li>
             );
           })}
         </ul>
       )}
 
-      <p className="text-xs text-muted-foreground">Showing the {RUN_LIMIT} most recent runs.</p>
+      {runs.hasNextPage && <Button variant="outline" size="sm" disabled={runs.isFetching} onClick={() => { void runs.fetchNextPage(); }}>
+        {t("runLifecycle.loadOlder")}
+      </Button>}
     </div>
   );
 }

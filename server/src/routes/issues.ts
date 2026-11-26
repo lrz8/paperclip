@@ -1,4 +1,5 @@
 import { assertAgentInteraction } from "../services/agent-interaction-policy.js";
+import { assertDeletionOwner, issueHasActiveWork, readIssueDeletionImpact, setTaskArchived } from "../services/issue-lifecycle.js";
 import { isAppQuestionCardKey } from "../services/mcp-elicitation.js";
 import { listStalledDependencies } from "../services/recovery/blocker-stall-wakeups.js";
 import { confirmMcpAttachmentCleanup, recordMcpAttachmentCleanup, type McpAttachmentCleanup } from "../services/public-mcp/upload-cleanup.js";
@@ -46,7 +47,7 @@ import {
 } from "../services/issue-creation-source.js";
 import { activeIssueInteractionCondition, readTaskQuestionContext } from "../services/issue-question-context.js";
 import { setIssueTitle } from "../services/issue-title.js";
-import { setIssueTitleSchema } from "@paperclipai/shared";
+import { setIssueTitleSchema, updateAgentConversationSchema } from "@paperclipai/shared";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { createIssueReadTiming } from "../services/issue-read-timing.js";
 import { createInboxMineTiming, type InboxMinePhaseDurations } from "../services/inbox-mine-timing.js";
@@ -61,7 +62,7 @@ import { deferredWakeJoinsFirstTurn, firstTurnTakesAllQueuedComments, runAccepts
 import { reconstructNativeWorkspace, unreconciledNativeExportPredicate } from "../services/native-runtime/native-workspace-reconstruction.js";
 import { reconstructWorkspaceSchema } from "@paperclipai/shared";
 import { hasQueuedInteractionResponse } from "../services/queued-interaction-response.js";
-import { deliverConversationComments, heldConversationComments, isConversation } from "../services/agent-conversations.js";
+import { deliverConversationComments, heldConversationComments, isConversation, undeliveredConversationComments } from "../services/agent-conversations.js";
 import { assertOnboardingFirstTaskDependenciesAllowed } from "../services/onboarding-first-task-admission.js";
 import { resolveChatTaskAssignment } from "../services/chat-task-assignment.js";
 import { issueRecoveryActionReadModel } from "../services/issue-recovery-actions.js";
@@ -92,6 +93,7 @@ import {
   companyMemberships,
   documents,
   executionWorkspaces,
+  fastResponseRequests,
   heartbeatRuns,
   issueApprovals,
   issueAccessGrants,
@@ -3092,6 +3094,7 @@ function toCompactIssue(issue: any): CompactIssue {
     startedAt: issue.startedAt,
     completedAt: issue.completedAt,
     cancelledAt: issue.cancelledAt,
+    taskArchivedAt: issue.taskArchivedAt,
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
     ...(issue.labelIds ? { labelIds: issue.labelIds } : {}),
@@ -7813,6 +7816,9 @@ export function issueRoutes(
     if (resolved.agent.status === "terminated") {
       throw conflict("Cannot assign work to terminated agents");
     }
+    if (resolved.agent.archived) {
+      throw conflict("Cannot assign work to archived agents");
+    }
     // Agents must not route work to a paused peer/manager: the assignment is
     // accepted silently, nothing will ever run it, and the issue becomes an
     // invisible dead letter (e.g. escalation issues assigned to a paused
@@ -8832,6 +8838,13 @@ export function issueRoutes(
       res.status(403).json({ error: "inboxArchive requires board authentication" });
       return;
     }
+    const taskArchive = req.query.taskArchive;
+    if (taskArchive !== undefined && (
+      (taskArchive !== "active" && taskArchive !== "archived" && taskArchive !== "all") || attention
+    )) {
+      res.status(400).json({ error: "taskArchive must be active, archived, or all and cannot be used with attention" });
+      return;
+    }
     const hasPlanDocument = parseOptionalBooleanQuery(
       req.query.hasPlanDocument,
     );
@@ -8999,6 +9012,7 @@ export function issueRoutes(
       assigneeUserId,
       touchedByUserId,
       inboxArchivedByUserId,
+      taskArchive,
       inboxArchive: inboxArchive && req.actor.type === "board" && req.actor.userId
         ? { mode: inboxArchive, userId: req.actor.userId }
         : undefined,
@@ -9059,7 +9073,7 @@ export function issueRoutes(
       requestKey,
       // The new collection projections must reflect read/archive/undo mutations
       // immediately. Keep in-flight coalescing and ETags, without a stale TTL body.
-      allowTtlCache: view === "compact" && !inboxArchive,
+      allowTtlCache: view === "compact" && !inboxArchive && taskArchive === undefined,
       diagnostics: opts.issueListDiagnostics,
       compute: async () => {
         return prepareIssueListForActor(req, companyId, listFilters, view, { reportPagination: true });
@@ -14673,6 +14687,9 @@ export function issueRoutes(
       );
       if (!existing) return;
       if (!(await assertIssueReadAllowed(req, res, existing))) return;
+      if (existing.conversationAgentId && req.body.hiddenAt !== undefined) {
+        throw unprocessable("Use the conversation settings to archive or restore this conversation");
+      }
       const nativeStageApproval = await assertNativeRunKeepsOwnExecutionLock(req, existing, req.body.status, { allowStageApproval: true });
       if (req.body.expectedStatusVersion !== undefined && (
         existing.statusVersion !== req.body.expectedStatusVersion || existing.status !== "backlog"
@@ -17077,19 +17094,47 @@ export function issueRoutes(
     },
   );
 
-  router.delete("/issues/:id", async (req, res) => {
-    const id = req.params.id as string;
+  async function changeTaskArchive(req: Request, res: Response, archived: boolean) {
+    assertBoard(req);
     const existing = await getAccessibleResource(
       req,
       res,
-      svc.getById(id),
+      svc.getById(req.params.id as string),
       "Issue not found",
     );
+    if (!existing || !(await assertIssueReadAllowed(req, res, existing))) return;
+    res.json(await setTaskArchived(db, existing.companyId, existing.id, archived, getActorInfo(req)));
+  }
+
+  router.post("/issues/:id/task-archive", (req, res) => changeTaskArchive(req, res, true));
+  router.delete("/issues/:id/task-archive", (req, res) => changeTaskArchive(req, res, false));
+
+  async function taskForPermanentDeletion(req: Request, res: Response) {
+    assertBoard(req);
+    const existing = await getAccessibleResource(req, res, svc.getById(req.params.id as string), "Issue not found");
+    if (!existing || !(await assertIssueReadAllowed(req, res, existing))) return null;
+    assertDeletionOwner(existing, getActorInfo(req).actorId);
+    return existing;
+  }
+
+  router.get("/issues/:id/deletion-impact", async (req, res) => {
+    const existing = await taskForPermanentDeletion(req, res);
     if (!existing) return;
-    if (!(await assertAgentIssueMutationAllowed(req, res, existing))) return;
+    res.json(await readIssueDeletionImpact(db, existing));
+  });
+
+  router.delete("/issues/:id", async (req, res) => {
+    const existing = await taskForPermanentDeletion(req, res);
+    if (!existing) return;
+    if (req.query.confirm !== existing.id) {
+      res.status(400).json({ error: "Permanent deletion requires confirm=<task UUID>" });
+      return;
+    }
+    const id = existing.id;
+    const actor = getActorInfo(req);
     const attachments = await svc.listAttachments(id);
 
-    const issue = await svc.remove(id, req.actor.type === "agent" ? req.actor.agentId : null);
+    const issue = await svc.remove(id, null, { companyId: existing.companyId, actor });
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
@@ -17106,35 +17151,6 @@ export function issueRoutes(
         );
       }
     }
-
-    const actor = getActorInfo(req);
-    await logActivity(db, {
-      companyId: issue.companyId,
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      agentId: actor.agentId,
-      runId: actor.runId,
-      agentApiKeyId: actor.agentApiKeyId,
-      action: "issue.deleted",
-      entityType: "issue",
-      entityId: issue.id,
-      details: { parentId: issue.parentId },
-    });
-
-    // The removed child can no longer pass live read authorization. Notify
-    // its parent separately; delivery authorizes that parent and exposes no
-    // deleted-child identity or content to people who can only read the parent.
-    if (issue.parentId) await logActivity(db, {
-      companyId: issue.companyId,
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      agentId: actor.agentId,
-      runId: actor.runId,
-      agentApiKeyId: actor.agentApiKeyId,
-      action: "issue.child_deleted",
-      entityType: "issue",
-      entityId: issue.parentId,
-    });
 
     await queueTaskWatchdogEvaluation(existing, actor.runId);
     res.json(issue);
@@ -19321,6 +19337,53 @@ export function issueRoutes(
     res.json(bundle);
   });
 
+  router.patch("/companies/:companyId/chats/:agentRef", validate(updateAgentConversationSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type !== "board" || !req.actor.userId) throw forbidden("Board user access required");
+    const userId = req.actor.userId;
+    const resolved = await agentsSvc.resolveByReference(companyId, req.params.agentRef as string);
+    if (resolved.ambiguous) throw conflict("Agent reference is ambiguous");
+    if (!resolved.agent) throw notFound("Agent not found");
+    const agentId = resolved.agent.id;
+    const input = updateAgentConversationSchema.parse(req.body);
+    const current = await svc.getConversation(companyId, agentId, userId);
+    if (!current || current.id !== input.issueId) throw notFound("Conversation not found");
+    if (!(await assertIssueReadAllowed(req, res, current))) return;
+
+    const publications: ActivityPublication[] = [];
+    const updated = await db.transaction(async tx => {
+      const query = tx as unknown as Db;
+      const predicate = and(eq(issueRows.companyId, companyId), eq(issueRows.id, input.issueId),
+        eq(issueRows.conversationAgentId, agentId), eq(issueRows.conversationUserId, userId));
+      const [issue] = await tx.select().from(issueRows).where(predicate).for("update");
+      if (!issue) throw notFound("Conversation not found");
+      if ("title" in input) {
+        const { publication } = await setIssueTitle(query, companyId, issue.id, { title: input.title }, getActorInfo(req));
+        if (publication) publications.push(publication);
+        return tx.select().from(issueRows).where(predicate).then(rows => rows[0]!);
+      }
+      if (input.archived === Boolean(issue.hiddenAt)) return issue;
+      if (input.archived) {
+        const [pendingReply] = await tx.select({ id: fastResponseRequests.id }).from(fastResponseRequests).where(and(
+          eq(fastResponseRequests.companyId, companyId), eq(fastResponseRequests.issueId, issue.id),
+          inArray(fastResponseRequests.status, ["pending", "running"]),
+        )).limit(1);
+        if (pendingReply || await issueHasActiveWork(query, issue) || (await undeliveredConversationComments(query, companyId, issue.id)).length) {
+          throw conflict("Finish or cancel the pending conversation turn before archiving", { code: "conversation_pending_turn" });
+        }
+      }
+      const result = await svc.update(issue.id, { companyGuard: companyId, hiddenAt: input.archived ? new Date() : null }, tx, publications);
+      if (!result) throw notFound("Conversation not found");
+      await logActivity(query, { companyId, actorType: "user", actorId: userId,
+        action: input.archived ? "issue.conversation_archived" : "issue.conversation_restored", entityType: "issue", entityId: issue.id,
+        details: { conversationUserId: userId } }, publications);
+      return result;
+    });
+    for (const publication of publications) publishActivity(publication);
+    res.json((await withConversationReadState(db, companyId, userId, [updated]))[0]);
+  });
+
   router.get("/companies/:companyId/chats", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -20590,6 +20653,7 @@ export function issueRoutes(
       if (issue.conversationAgentId && req.actor.type === "board" && req.actor.userId !== issue.conversationUserId) {
         throw forbidden("Only the conversation owner can upload attachments");
       }
+      if (issue.conversationAgentId && issue.hiddenAt) throw conflict("Restore the conversation before uploading attachments", { code: "conversation_archived" });
       if (!(await assertAgentIssueMutationAllowed(req, res, issue))) return;
       if (
         !(await assertDeliverableMutationAllowedByRunContext(req, res, issue))

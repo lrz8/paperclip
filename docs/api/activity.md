@@ -44,3 +44,23 @@ All mutations are recorded:
 - Company configuration changes
 
 The activity log is append-only and immutable.
+
+## Execution history
+
+`GET /api/companies/{companyId}/heartbeat-runs` accepts `archive=active` or
+`archive=archived`. Omit this filter to include both. `beforeRunId` retrieves
+rows older than the supplied run in the same company, in descending creation
+order. Use the last result's ID as the next cursor.
+
+Board operators who can inspect a run can archive a completed run with
+`POST /api/heartbeat-runs/{runId}/archive` and restore it with
+`POST /api/heartbeat-runs/{runId}/restore`. The run and its related records
+remain readable by ID under the usual permissions.
+
+`POST /api/heartbeat-runs/{runId}/purge-log` requires `{ "confirm": "{runId}" }`.
+It physically removes an archived run's finalized Paperclip-managed local
+output log and clears its output excerpts. Execution metadata, structured
+conversation events, costs, audit history, workspace files and external CLI
+sessions are retained. Remote log journals are ineligible. The endpoint
+reports when a run is ineligible and records a successful cleanup in the
+activity log. Existing backups can retain the original log until expiry.

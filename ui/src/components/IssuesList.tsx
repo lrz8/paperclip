@@ -512,6 +512,7 @@ interface IssuesListProps {
    * the merged Tasks surface uses to put its Views control there (PAP-670).
    */
   toolbarContext?: ReactNode;
+  getLifecycleActions?: (issue: Issue) => ReactNode;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
 }
 
@@ -741,6 +742,7 @@ function StreamlinedIssuesList({
   initialSearch,
   searchFilters,
   searchWithinLoadedIssues = false,
+  getLifecycleActions,
   baseCreateIssueDefaults,
   createIssueLabel,
   defaultSortField,
@@ -2307,6 +2309,7 @@ function StreamlinedIssuesList({
                     >
                       <IssueRow
                         issue={issue}
+                        lifecycleActions={getLifecycleActions?.(issue)}
                         archiveAction={getArchiveAction?.(issue)}
                         presentation={rowPresentation}
                         stableLayout={enableAgentCreatedVisibilityFilter}

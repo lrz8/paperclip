@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents } from "@paperclipai/db";
 import {
+  AGENT_ARCHIVE_HOLD,
   getAgentWorkEligibility,
   type AgentEligibilityAgent,
   type AgentOrgChainHealth,
@@ -9,12 +10,14 @@ import {
 import { conflict, notFound, unprocessable } from "../errors.js";
 
 type AgentAssignmentKind = "work" | "routine";
+type AssignabilityDb = Pick<Db, "select">;
 
-type AssignabilityAgent = AgentEligibilityAgent;
+type AssignabilityAgent = AgentEligibilityAgent & { lifecycleHolds?: readonly string[] };
 
 type AgentAssignmentConflictReason =
   | "pending_approval"
   | "assignee_terminated"
+  | "assignee_archived"
   | "assignee_unknown_status"
   | "ancestor_terminated"
   | "ancestor_missing"
@@ -32,6 +35,11 @@ function assignmentMessage(kind: AgentAssignmentKind, reason: AgentAssignmentCon
     return kind === "routine"
       ? "Cannot assign routines to terminated agents"
       : "Cannot assign work to terminated agents";
+  }
+  if (reason === "assignee_archived") {
+    return kind === "routine"
+      ? "Cannot assign routines to archived agents"
+      : "Cannot assign work to archived agents";
   }
   if (reason === "assignee_unknown_status") {
     return kind === "routine"
@@ -67,13 +75,14 @@ function conflictDetails(input: {
   };
 }
 
-async function getAgent(db: Db, agentId: string): Promise<AssignabilityAgent | null> {
+async function getAgent(db: AssignabilityDb, agentId: string): Promise<AssignabilityAgent | null> {
   return db
     .select({
       id: agents.id,
       companyId: agents.companyId,
       name: agents.name,
       status: agents.status,
+      lifecycleHolds: agents.lifecycleHolds,
       reportsTo: agents.reportsTo,
     })
     .from(agents)
@@ -81,7 +90,7 @@ async function getAgent(db: Db, agentId: string): Promise<AssignabilityAgent | n
     .then((rows) => rows[0] ?? null);
 }
 
-async function listCompanyAgents(db: Db, companyId: string): Promise<AssignabilityAgent[]> {
+async function listCompanyAgents(db: AssignabilityDb, companyId: string): Promise<AssignabilityAgent[]> {
   return db
     .select({
       id: agents.id,
@@ -102,7 +111,7 @@ function assignmentReasonFromHealth(health: AgentOrgChainHealth): AgentAssignmen
 }
 
 export async function assertAssignableAgent(
-  db: Db,
+  db: AssignabilityDb,
   companyId: string,
   agentId: string | null | undefined,
   options: { kind?: AgentAssignmentKind } = {},
@@ -113,6 +122,14 @@ export async function assertAssignableAgent(
   if (!assignee) throw notFound("Assignee agent not found");
   if (assignee.companyId !== companyId) {
     throw unprocessable("Assignee must belong to same company");
+  }
+  if (assignee.lifecycleHolds?.includes(AGENT_ARCHIVE_HOLD)) {
+    throw conflict(assignmentMessage(kind, "assignee_archived"), conflictDetails({
+      companyId,
+      assigneeAgentId: agentId,
+      reason: "assignee_archived",
+      chain: [assignee],
+    }));
   }
 
   const companyAgents = await listCompanyAgents(db, companyId);

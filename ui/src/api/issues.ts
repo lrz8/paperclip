@@ -1,4 +1,4 @@
-import type { IssueInboxArchiveFilter, SetIssueTitle } from "@paperclipai/shared";
+import type { IssueDeletionImpact, IssueInboxArchiveFilter, IssueTaskArchiveFilter, SetIssueTitle } from "@paperclipai/shared";
 import { ISSUE_CHAT_BOOTSTRAP_MAX_IDS, ISSUE_SUMMARIES_MAX_IDS, type IssueChatBootstrap } from "@paperclipai/shared";
 import type { RunForIssue } from "./activity";
 import type { ActiveRunForIssue, LiveRunForIssue } from "./heartbeats";
@@ -208,6 +208,7 @@ export type IssueListFilters = {
   touchedByUserId?: string;
   inboxArchivedByUserId?: string;
   inboxArchive?: IssueInboxArchiveFilter;
+  taskArchive?: IssueTaskArchiveFilter;
   unreadForUserId?: string;
   /** Add the current board user's read state without filtering task membership. */
   includeReadState?: boolean;
@@ -252,6 +253,7 @@ function issueListSearchParams(filters?: IssueListFilters) {
   if (filters?.touchedByUserId)
     params.set("touchedByUserId", filters.touchedByUserId);
   if (filters?.inboxArchive) params.set("inboxArchive", filters.inboxArchive);
+  if (filters?.taskArchive) params.set("taskArchive", filters.taskArchive);
   if (filters?.inboxArchivedByUserId)
     params.set("inboxArchivedByUserId", filters.inboxArchivedByUserId);
   if (filters?.unreadForUserId)
@@ -539,7 +541,11 @@ export const issuesApi = {
       `/issues/${id}/scheduled-retry/retry-now`,
       {},
     ),
-  remove: (id: string) => api.delete<Issue>(`/issues/${id}`),
+  archiveTask: (id: string, archived: boolean) => archived
+    ? api.post<Pick<Issue, "id" | "taskArchivedAt">>(`/issues/${id}/task-archive`, {})
+    : api.delete<Pick<Issue, "id" | "taskArchivedAt">>(`/issues/${id}/task-archive`),
+  deletionImpact: (id: string) => api.get<IssueDeletionImpact>(`/issues/${id}/deletion-impact`),
+  remove: (id: string) => api.delete<Issue>(`/issues/${id}?confirm=${encodeURIComponent(id)}`),
   checkout: (id: string, agentId: string) =>
     api.post<Issue>(`/issues/${id}/checkout`, {
       agentId,

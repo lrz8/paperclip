@@ -358,6 +358,7 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
   const visibleAgents = useMemo(() => {
     const filtered = (agents ?? []).filter(
       (a: Agent) =>
+        !a.archived &&
         a.status !== "terminated" &&
         (
           !membershipsQuery.isSuccess ||

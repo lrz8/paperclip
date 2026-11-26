@@ -188,6 +188,8 @@ export interface HeartbeatRun {
   }>;
   startedAt: Date | null;
   finishedAt: Date | null;
+  archivedAt?: Date | null;
+  logPurgedAt?: Date | null;
   error: string | null;
   wakeupRequestId: string | null;
   exitCode: number | null;

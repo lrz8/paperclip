@@ -19,6 +19,22 @@ It returns `{ "started": true }` when the welcome is queued or already owed, or
 owner-bound. Refreshes do not repeat a successful welcome. Normal pause, budget
 and agent admission gates apply.
 
+## Conversation history
+
+`GET /api/companies/{companyId}/chats` lists the caller's standing conversations,
+including archived entries with a non-null `hiddenAt`.
+
+`PATCH /api/companies/{companyId}/chats/{agentRef}` accepts the existing
+conversation's `issueId` with either a `title` or an `archived` boolean. It
+requires the conversation owner and returns the updated conversation. Finish
+or cancel pending turns before archive. An archived conversation stays readable
+and must be restored before new messages or uploads. Restore keeps all history.
+
+For permanent removal, review `GET /api/issues/{id}/deletion-impact` and explicitly
+confirm `DELETE /api/issues/{id}?confirm={id}` when the archived conversation is
+eligible for deletion. Use the transcript, document and attachment counts to
+review the impact. Run and cost history and external session data are retained.
+
 ## List Issues
 
 ```
@@ -38,6 +54,7 @@ Query parameters:
 | `oneChildPerParent` | With `view=index` and `parentIds`, return at most one readable child per parent for collapsed-tree affordances |
 | `includeReadState` | Board-only `true` adds the current user's personal read state without removing read or untouched tasks |
 | `inboxArchive` | `include` adds the viewer's archive state to each result. `archived` returns only tasks actively archived by the viewer. |
+| `taskArchive` | `active` (default) excludes tasks archived by the organization. `archived` returns archived tasks. `all` includes both. |
 
 Results sorted by priority.
 
@@ -45,6 +62,10 @@ Results sorted by priority.
 with `attention`. When `inboxArchive` is present, each result includes the
 boolean `isArchivedForMe`. Paperclip uses the same activity rules as Mine to
 decide whether a task is still archived for the viewer.
+
+The organization archive applies to collection search as well as ordinary lists.
+It is independent of the viewer's inbox archive. Use the task detail API to
+access an archived task by its identifier.
 
 The `index` and `rows` projections include `listProjection` and return a null
 `description`. They are partial collection snapshots: fetch the issue detail
@@ -522,3 +543,32 @@ backlog -> todo -> in_progress -> in_review -> done
 - `started_at` auto-set on `in_progress`
 - `completed_at` auto-set on `done`
 - Terminal states: `done`, `cancelled`
+
+### Archive or restore a task
+
+```
+POST   /api/issues/{issueId}/task-archive
+DELETE /api/issues/{issueId}/task-archive
+```
+
+Board members with task access can archive a completed or cancelled task after
+its execution and active subtasks have finished. Both operations return
+`{ id, taskArchivedAt }` and are idempotent. Restore a task before changing its
+status, sending a comment, or launching new work. Archiving preserves its
+status, history, costs, attachments, and workspaces.
+
+### Review and confirm permanent deletion
+
+```
+GET    /api/issues/{issueId}/deletion-impact
+DELETE /api/issues/{issueId}?confirm=<task UUID>
+```
+
+The board-only preview returns `blockers`, `comments`, `documents`,
+`attachments`, and `attachmentBytes`. Chat deletion requires the conversation
+owner. Deletion rechecks archive state and dependencies under the task lock
+and returns `409` while blockers remain. Blockers include active execution,
+dependent subtasks, pending approvals, schedules, task workspaces, restoration
+points, and decision history. Attachment objects are queued for durable
+cleanup. Cost and run records remain with the task reference detached. Local
+repositories and external CLI session files are retained.

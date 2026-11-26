@@ -1,4 +1,7 @@
 import { useTranslation } from "@/i18n";
+import { useTaskLifecycle } from "@/hooks/useTaskLifecycle";
+import { canArchiveTask } from "@/components/TaskLifecycleMenu";
+import { AgentConversationActions } from "@/components/AgentConversationActions";
 import { createUuid } from "@/lib/uuid";
 import { invalidateInteractionRecordViews } from "@/lib/attention-record-views";
 import { companyProjectsQuery } from "@/lib/company-projects-query";
@@ -3329,6 +3332,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const location = useLocation();
+  const taskLifecycle = useTaskLifecycle(selectedCompanyId, false, () => navigate("/issues?view=all&taskArchive=archived"));
   const { pushToast } = useToastActions();
   const { isMobile } = useSidebar();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -8107,6 +8111,25 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-52 p-1" align="end">
+                {canArchiveTask(issue) ? (
+                  <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
+                    disabled={taskLifecycle.pending} onClick={() => {
+                      taskLifecycle.changeArchive(issue);
+                      setMoreOpen(false);
+                    }}>
+                    <Archive className="size-3" />
+                    {t(issue.taskArchivedAt ? "taskLifecycle.restore" : "taskLifecycle.archive")}
+                  </button>
+                ) : null}
+                {issue.taskArchivedAt ? (
+                  <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
+                    onClick={() => {
+                      taskLifecycle.requestDelete(issue);
+                      setMoreOpen(false);
+                    }}>
+                    {t("taskLifecycle.delete")}
+                  </button>
+                ) : null}
                 {taskChatShellEnabled && !historyExpanded ? (
                   <button
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
@@ -8357,6 +8380,15 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
               : "max-w-3xl space-y-6"
           }
         >
+          {taskLifecycle.dialog}
+          {issue.taskArchivedAt ? (
+            <div className={cn("flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm", shellSectionClass)}>
+              <span>{t("taskLifecycle.archivedNotice")}</span>
+              <Button variant="outline" size="sm" disabled={taskLifecycle.pending} onClick={() => taskLifecycle.changeArchive(issue)}>
+                {t("taskLifecycle.restore")}
+              </Button>
+            </div>
+          ) : null}
           {error && coreIssueQuery.data && !isTransientError(error) ? (
             <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
               {t("taskDetail.partialLoadFailure")}
@@ -8367,6 +8399,15 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
           {taskChatShellEnabled ? null : ancestorsNav}
           {taskChatShellEnabled ? null : createdFromNote}
 
+          {loadedIssue?.conversationAgentId && sessionResolved && loadedIssue.conversationUserId === (currentUserId ?? "local-board") && (
+            <div className={cn("flex items-center gap-2 py-2", shellSectionClass)}>
+              <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={loadedIssue.title}>{loadedIssue.title}</h1>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/chats?history=1">{t("conversationLifecycle.history")}</Link>
+              </Button>
+              <AgentConversationActions key={loadedIssue.id} issue={loadedIssue} userId={currentUserId} onDeleted={() => navigate("/chats?history=1")} />
+            </div>
+          )}
           <ExternallyConnectedTaskBanner
             className={cn(shellSectionClass, "mt-3")}
             key={issue.id}
@@ -8406,7 +8447,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
               )}
             >
               <EyeOff className="h-4 w-4 shrink-0" />
-              {t("taskDetail.hidden")}
+              {issue.conversationAgentId ? t("conversationLifecycle.archivedHint") : t("taskDetail.hidden")}
             </div>
           )}
           {treeControlWakeWarning ? (
@@ -8877,7 +8918,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
                     } : undefined,
                     resumeHref: !activePauseHold.isRoot ? createIssueDetailPath(activePauseHoldRoot?.identifier ?? activePauseHold.rootIssueId) : undefined,
                   } : null}
-                  composerDisabledReason={issue.conversationAgentId && !instanceExperimentalSettings?.enableAgentChat ? "Agent Chat is disabled in Experimental settings." : treeControlStateError ? "Couldn’t check whether this task is paused. Refresh to try again." : null}
+                  composerDisabledReason={issue.taskArchivedAt ? t("taskLifecycle.archivedNotice") : issue.conversationAgentId && issue.hiddenAt ? t("conversationLifecycle.archivedHint") : issue.conversationAgentId && !instanceExperimentalSettings?.enableAgentChat ? "Agent Chat is disabled in Experimental settings." : treeControlStateError ? "Couldn’t check whether this task is paused. Refresh to try again." : null}
                   composerHint={composerHint}
                   queuedCommentReason={queuedCommentReason}
                   onVote={handleCommentVote}

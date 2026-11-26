@@ -43,6 +43,7 @@ import {
   type TaskViewKey,
 } from "../lib/task-views";
 import { useTaskArchiveAction } from "../hooks/useTaskArchiveAction";
+import { useTaskLifecycle } from "../hooks/useTaskLifecycle";
 import { useUpdateIssueMutation } from "../hooks/useUpdateIssueMutation";
 import { usePageContentReady } from "../hooks/usePageContentReady";
 
@@ -190,6 +191,15 @@ function OrganizationIssues({
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const fetchNextPageInFlightRef = useRef(false);
+  const organizationArchive = searchParams.get("taskArchive") === "archived";
+  const taskArchive = organizationArchive ? "archived" : "active";
+  const lifecycle = useTaskLifecycle(selectedCompanyId, organizationArchive);
+  const changeArchiveView = () => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set("view", "all");
+    if (organizationArchive) next.delete("taskArchive"); else next.set("taskArchive", "archived");
+    return next;
+  });
 
   const urlSearch = searchParams.get("q") ?? "";
   const [searchOverride, setSearchOverride] = useState<{ search: string; locationSearch: string } | null>(null);
@@ -302,12 +312,14 @@ function OrganizationIssues({
       serverSortDir,
       includeBlockedBy,
       PERSONAL_ARCHIVE_QUERY_KEY,
+      taskArchive,
       archiveQueryScope,
     ],
     queryFn: ({ pageParam, signal }) => issuesApi.listCompact(selectedCompanyId!, {
       projection: streamlinedUiEnabled ? "index" : undefined,
       participantAgentId,
-      inboxArchive,
+      inboxArchive: organizationArchive ? undefined : inboxArchive,
+      taskArchive,
       workspaceId: workspaceIdFilter,
       includeRoutineExecutions: true,
       includeAgentCreatedTasks,
@@ -323,7 +335,7 @@ function OrganizationIssues({
       getNextIssuesPageOffset(lastPage.length, lastPageParam, issuePageSize),
     enabled: !!selectedCompanyId && (archiveView !== "archived" || !!userId),
     placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey.at(-1) === archiveQueryScope ? previousData : undefined,
+      previousQuery?.queryKey.at(-1) === archiveQueryScope && previousQuery.queryKey.at(-2) === taskArchive ? previousData : undefined,
   });
 
   const { data: issuePages, isFetchingNextPage, hasNextPage, fetchNextPage } = issuesQuery;
@@ -363,10 +375,12 @@ function OrganizationIssues({
   if (issuesView.kind === "error") return <QueryErrorState size="page" error={issuesView.error} action={t("tasks.load")} onRetry={issuesView.retry} retrying={issuesView.isFetching} />;
 
   return (
+    <>
     <IssuesList
-      key={archiveView === "archived" ? "archived" : undefined}
+      key={organizationArchive ? "organizationArchive" : archiveView === "archived" ? "archived" : undefined}
       issues={issues ?? []}
-      getArchiveAction={getArchiveAction}
+      getArchiveAction={organizationArchive ? undefined : getArchiveAction}
+      getLifecycleActions={lifecycle.rowActions}
       preloadTaskChats
       isLoading={issuesView.kind === "loading" || issuesView.kind === "reconnecting"}
       isLoadingMoreIssues={isFetchingNextPage}
@@ -380,7 +394,15 @@ function OrganizationIssues({
       initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
       initialWorkspaces={initialWorkspaces.length > 0 ? initialWorkspaces : undefined}
       initialStatuses={initialStatuses}
-      toolbarContext={toolbarContext}
+      toolbarContext={(
+        <>
+          {toolbarContext}
+          <Button size="sm" variant="outline" onClick={changeArchiveView} disabled={lifecycle.pending}>
+            {t(organizationArchive ? "taskLifecycle.active" : "taskLifecycle.archiveView")}
+          </Button>
+          {lifecycle.batchControls}
+        </>
+      )}
       initialSearch={syncedSearch}
       onSearchChange={handleSearchChange}
       enableAgentCreatedVisibilityFilter
@@ -391,10 +413,12 @@ function OrganizationIssues({
       hasMoreIssues={hasMoreServerIssues}
       onLoadMoreIssues={loadMoreServerIssues}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
-      searchFilters={participantAgentId || workspaceIdFilter || originKind || includeBlockedBy || inboxArchive ? {
-        participantAgentId, workspaceId: workspaceIdFilter, originKind, inboxArchive,
+      searchFilters={{
+        participantAgentId, workspaceId: workspaceIdFilter, originKind, inboxArchive: organizationArchive ? undefined : inboxArchive, taskArchive,
         ...(includeBlockedBy ? { includeBlockedBy: true } : {}),
-      } : undefined}
+      }}
     />
+    {lifecycle.dialog}
+    </>
   );
 }

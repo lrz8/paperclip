@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { agents, agentApiKeys, companies, budgetPolicies, type Db } from "@paperclipai/db";
-import type { AgentLifecycleOperation } from "@paperclipai/shared";
+import { AGENT_ARCHIVE_HOLD, type AgentLifecycleOperation } from "@paperclipai/shared";
 import { AgentLifecycleConflict, canConfigureAgentConnection, compatibilityStatus, isLifecycleWorkPending, transition, type LifecycleCommand } from "../domain/policy.js";
 import type { LifecycleEffects } from "./effects.js";
 import type { LifecycleStore } from "../application/ports.js";
@@ -112,6 +112,10 @@ export async function wakeStoppingAgentLifecycleInTransaction(
 async function changeLockedAgent(tx: Db, effects: LifecycleEffects, agent: LifecycleRow,
   command: LifecycleCommand, options: ChangeOptions = {}, policyHolds?: string[], restartPause = false) {
   if (options.version !== undefined && options.version !== agent.lifecycleVersion) return null;
+  const archived = agent.lifecycleHolds.includes(AGENT_ARCHIVE_HOLD);
+  if (command === "resume" && archived) throw new AgentLifecycleConflict("Restore the archived agent before resuming");
+  if (command === "archive" && agent.lifecycleHolds.includes("setup")) throw new AgentLifecycleConflict("Finish agent setup before archiving");
+  if (command === "unarchive" && !archived) return agent;
   if (command === "resume" && agent.lifecycleHolds.includes("setup")) throw new AgentLifecycleConflict("Finish agent setup before resuming");
   if (command === "complete" && (!options.owner || !agent.lifecycleOperation?.leaseUntil || agent.lifecycleOperation?.leaseOwner !== options.owner ||
     Date.parse(agent.lifecycleOperation?.leaseUntil ?? "") <= Date.now() ||
@@ -147,12 +151,14 @@ async function changeLockedAgent(tx: Db, effects: LifecycleEffects, agent: Lifec
     if (company.status === "paused") holds.push("company_paused");
   }
   if (command === "pause") holds = [...new Set([...holds, reason])];
+  if (command === "archive") holds = [...new Set([AGENT_ARCHIVE_HOLD, ...holds])];
+  if (command === "unarchive") holds = holds.filter(hold => hold !== AGENT_ARCHIVE_HOLD);
   if (command === "resume") holds = holds.filter(hold => reason === "user" ? ["budget", "company_archived", "company_paused"].includes(hold) : hold !== reason);
   const blockingHolds = holds.filter(hold => hold !== "setup" || !["preparing", "verifying"].includes(agent.lifecycleState));
   let next = command === "reconcile"
     ? blockingHolds.length && !["pausing", "paused"].includes(agent.lifecycleState) ? "pausing" as const
       : !holds.length && agent.lifecycleState === "paused" ? "resuming" as const : agent.lifecycleState
-    : command === "resume" && (holds.length || agent.lifecycleState === "pausing") ? agent.lifecycleState
+    : (command === "resume" || command === "unarchive") && (holds.length || agent.lifecycleState === "pausing") ? agent.lifecycleState
     : transition(agent.lifecycleState, command, agent.lifecycleOperation?.resumeState);
   if (restartPause && next === "paused") next = "pausing";
   if (command === "complete" && next === "ready" && holds.length) next = "pausing";
@@ -161,7 +167,7 @@ async function changeLockedAgent(tx: Db, effects: LifecycleEffects, agent: Lifec
     && await effects.setupRequiresPreparation(tx, agent.companyId, agent.defaultEnvironmentId, agent)) next = "preparing";
   if (next === agent.lifecycleState) {
     if (JSON.stringify(holds) !== JSON.stringify(agent.lifecycleHolds) || agent.pauseReason !== (holds[0] ?? null)) {
-      const [updated] = await tx.update(agents).set({ lifecycleHolds: holds, pauseReason: holds[0] ?? null }).where(eq(agents.id, agent.id)).returning();
+      const [updated] = await tx.update(agents).set({ lifecycleHolds: holds, pauseReason: holds[0] ?? null, updatedAt: new Date() }).where(eq(agents.id, agent.id)).returning();
       return updated;
     }
     return agent;

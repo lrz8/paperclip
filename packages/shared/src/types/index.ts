@@ -327,6 +327,7 @@ export type {
   AgentAccessState,
   AgentChainOfCommandEntry,
   AgentDetail,
+  AgentDeleteImpact,
   ClearAgentErrorResponse,
   AgentPermissions,
   AgentProjectAccess,
@@ -735,6 +736,8 @@ export type {
 export type {
   CompactIssue,
   IssueInboxArchiveFilter,
+  IssueTaskArchiveFilter,
+  IssueDeletionImpact,
   IssueSummary,
   Issue,
   IssueChangeReceiptEntry,

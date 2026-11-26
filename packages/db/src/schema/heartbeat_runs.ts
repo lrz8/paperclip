@@ -47,6 +47,8 @@ export const heartbeatRuns = pgTable(
     activeIdentityContextId: uuid("active_identity_context_id"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    logPurgedAt: timestamp("log_purged_at", { withTimezone: true }),
     // Set only after provider execution settles; never a timeout on thinking.
     executionControlDeadlineAt: timestamp("execution_control_deadline_at", { withTimezone: true }),
     // Transactional delivery marker. Null on historical rows; publication never replays provider work.

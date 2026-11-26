@@ -428,6 +428,8 @@ export {
   issueChatBootstrapQuerySchema,
   setIssueTitleSchema,
   type SetIssueTitle,
+  updateAgentConversationSchema,
+  type UpdateAgentConversation,
   createIssueInputSchema,
   createChildIssueSchema,
   createAcceptedPlanDecompositionSchema,

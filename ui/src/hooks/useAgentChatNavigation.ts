@@ -9,6 +9,7 @@ import { issuesApi } from "@/api/issues";
 import { mergeComposerRunSettings, type ComposerRunSettings } from "@/components/task-chat/composer-run-settings";
 import { useCompany } from "@/context/CompanyContext";
 import { useSidebar } from "@/context/SidebarContext";
+import { t } from "@/i18n";
 import { queryKeys } from "@/lib/queryKeys";
 import { useNavigate } from "@/lib/router";
 import { agentRouteRef } from "@/lib/utils";
@@ -31,7 +32,7 @@ export function useAgentChatNavigation() {
 }
 
 /** Puts a resolved chat where the Chat pages read it, newest first in the list. */
-function rememberChat(client: QueryClient, companyId: string, userId: string | null, agentId: string, chat: Issue) {
+export function rememberChat(client: QueryClient, companyId: string, userId: string | null, agentId: string, chat: Issue) {
   client.setQueryData(queryKeys.agentChats.detail(companyId, userId, agentId), chat);
   client.setQueryData(queryKeys.issues.detail(chat.id), chat);
   client.setQueryData<Issue[]>(queryKeys.agentChats.list(companyId, userId), previous =>
@@ -78,6 +79,7 @@ export function useStartAgentChat(companyId: string | null, userId: string | nul
     const current = scope.current;
     const chat = await agentChatsApi.ensure(companyId, agent.id);
     rememberChat(client, companyId, userId, agent.id, chat);
+    if (chat.hiddenAt) throw new Error(t("conversationLifecycle.archivedHint"));
     if (runSettings) {
       // Read the complete overrides first so unrelated options survive.
       const fresh = await issuesApi.getCore(chat.id, { cache: "no-store", fresh: true });

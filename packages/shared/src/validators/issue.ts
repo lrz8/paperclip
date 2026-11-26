@@ -949,6 +949,13 @@ export const setIssueTitleSchema = z.object({
 
 export type SetIssueTitle = z.input<typeof setIssueTitleSchema>;
 
+export const updateAgentConversationSchema = z.union([
+  z.object({ issueId: z.string().uuid(), title: setIssueTitleSchema.shape.title }).strict(),
+  z.object({ issueId: z.string().uuid(), archived: z.boolean() }).strict(),
+]);
+
+export type UpdateAgentConversation = z.input<typeof updateAgentConversationSchema>;
+
 export type CreateIssue = z.infer<typeof createIssueSchema>;
 
 export const upsertIssueWatchdogSchema = z

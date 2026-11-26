@@ -37,6 +37,8 @@ export function AgentConversationsSidebar({ compact = false }: { compact?: boole
   for (const result of historyAgents) if (result.data) byId.set(result.data.id, result.data);
   const active = [...byId.values()].find(agent => agent.id === activeRef || (agent.status !== "terminated" && encodeURIComponent(agentRouteRef(agent)) === activeRef));
   const activeId = active?.id;
+  const archivedAgentIds = new Set((chats.data ?? []).flatMap(chat => chat.hiddenAt && chat.conversationAgentId ? [chat.conversationAgentId] : []));
+  const titles = Object.fromEntries((chats.data ?? []).flatMap(chat => chat.conversationAgentId ? [[chat.conversationAgentId, chat.title]] : []));
   const existingChatAgentIds = useMemo(() => {
     const ids = (chats.data ?? []).flatMap(chat => chat.conversationAgentId ? [chat.conversationAgentId] : []);
     if (activeId && !ids.includes(activeId)) ids.unshift(activeId);
@@ -45,17 +47,17 @@ export function AgentConversationsSidebar({ compact = false }: { compact?: boole
   const unreadAgentIds = useMemo(() => (chats.data ?? [])
     .flatMap(chat => chat.isUnreadForMe && chat.conversationAgentId ? [chat.conversationAgentId] : []), [chats.data]);
   const conversations = (chats.data ?? []).flatMap(chat => {
-    const agent = chat.conversationAgentId ? byId.get(chat.conversationAgentId) : undefined;
+    const agent = !chat.hiddenAt && chat.conversationAgentId ? byId.get(chat.conversationAgentId) : undefined;
     return agent ? [agent] : [];
   });
-  if (active && !conversations.some(agent => agent.id === active.id)) conversations.unshift(active);
+  if (active && !archivedAgentIds.has(active.id) && !conversations.some(agent => agent.id === active.id)) conversations.unshift(active);
   // Everyone you can chat with is listed, not only agents you've already
   // talked to: conversations first by recent activity, then the rest of the
   // roster alphabetically. Same eligibility rule as the Agents nav section —
   // terminated agents and agents you've left are omitted.
   const listedIds = new Set(conversations.map(agent => agent.id));
   const teammates = roster
-    .filter(agent => !listedIds.has(agent.id) && agent.status !== "terminated"
+    .filter(agent => !listedIds.has(agent.id) && !archivedAgentIds.has(agent.id) && agent.status !== "terminated"
       && (!memberships.isSuccess || resourceMembershipState(memberships.data, "agent", agent.id) !== "left"))
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
   const previews = Object.fromEntries((chats.data ?? []).filter(chat => chat.conversationState === "active")
@@ -66,6 +68,8 @@ export function AgentConversationsSidebar({ compact = false }: { compact?: boole
   }, [companyId, agentChatPins.orderedKeys]);
   return <AgentConversationSidebar key={`${companyId}:${userId}`} agents={[...conversations, ...teammates]} availableAgents={roster}
     compact={compact}
+    titles={titles}
+    showHistory
     existingChatAgentIds={existingChatAgentIds}
     activeId={active?.id} previews={previews}
     unreadAgentIds={unreadAgentIds}

@@ -109,6 +109,19 @@ describe("createDurableRunLogStore", () => {
     await expect(store.read(handle)).rejects.toThrow("Run log not found");
   });
 
+  it("leaves files reached through a log directory alias untouched", async () => {
+    const store = createDurableRunLogStore({ basePath: baseDir });
+    const handle = await store.begin(begin);
+    const file = path.join(baseDir, handle.logRef);
+    await store.append(handle, { stream: "stdout", chunk: "owned test data", ts: "t1" });
+    await store.finalize(handle);
+    const saved = path.join(baseDir, "separate-project");
+    await fs.rename(path.dirname(file), saved);
+    await fs.symlink(saved, path.dirname(file));
+    await expect(store.remove!(handle)).rejects.toThrow("Run log directory is an alias");
+    expect(await fs.readFile(path.join(saved, path.basename(file)), "utf8")).toContain("owned test data");
+  });
+
   it.each([false, true])("reads a complete long final record from a compact tail (S3 fallback: %s)", async (remote) => {
     const { provider, objects, calls } = createMemoryProvider();
     const store = createDurableRunLogStore({ basePath: baseDir, s3: { provider } });

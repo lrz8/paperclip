@@ -14,6 +14,7 @@ import {
   getTableColumns,
   gt,
   isNull,
+  isNotNull,
   or,
   sql,
 } from "drizzle-orm";
@@ -88,6 +89,8 @@ const heartbeatRunListColumns = {
   )`.as("costUsd"),
   startedAt: heartbeatRuns.startedAt,
   finishedAt: heartbeatRuns.finishedAt,
+  archivedAt: heartbeatRuns.archivedAt,
+  logPurgedAt: heartbeatRuns.logPurgedAt,
   error: heartbeatRuns.error,
   wakeupRequestId: heartbeatRuns.wakeupRequestId,
   exitCode: heartbeatRuns.exitCode,
@@ -1804,7 +1807,7 @@ export function createHeartbeatRunState(db: Db) {
       companyId: string,
       agentId?: string,
       limit?: number,
-      options: { summary?: boolean } = {},
+      options: { summary?: boolean; archive?: "active" | "archived"; beforeRunId?: string } = {},
     ) => {
       const safeForLegacyEncoding = await hasUnsafeTextProjectionDatabase();
       const summary = options.summary === true;
@@ -1830,15 +1833,15 @@ export function createHeartbeatRunState(db: Db) {
           )
           .from(heartbeatRuns)
           .leftJoin(heartbeatRunListContextRecord, sql`true`)
-          .where(
-            agentId
-              ? and(
-                  eq(heartbeatRuns.companyId, companyId),
-                  eq(heartbeatRuns.agentId, agentId),
-                )
-              : eq(heartbeatRuns.companyId, companyId),
-          )
-          .orderBy(desc(heartbeatRuns.createdAt));
+          .where(and(
+            eq(heartbeatRuns.companyId, companyId),
+            agentId ? eq(heartbeatRuns.agentId, agentId) : undefined,
+            options.archive === "archived" ? isNotNull(heartbeatRuns.archivedAt)
+              : options.archive === "active" ? isNull(heartbeatRuns.archivedAt) : undefined,
+            options.beforeRunId ? sql`(${heartbeatRuns.createdAt}, ${heartbeatRuns.id}) < (select cursor.created_at, cursor.id
+              from ${heartbeatRuns} as cursor where cursor.company_id = ${companyId} and cursor.id = ${options.beforeRunId})` : undefined,
+          ))
+          .orderBy(desc(heartbeatRuns.createdAt), desc(heartbeatRuns.id));
 
         const boundedLimit = Number.isFinite(limit)
           ? Math.max(1, Math.min(HEARTBEAT_RUN_LIST_MAX_LIMIT, Math.trunc(limit!)))

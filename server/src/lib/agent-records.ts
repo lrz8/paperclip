@@ -5,6 +5,7 @@ import {
   agentAppearanceSchema, resolveAgentAppearance, agentAvatarUrl,
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS, agentRuntimeConfigSchema, getAgentWorkEligibility,
   normalizeAgentUrlKey, type AgentEligibilityAgent, type AgentRunnerChoice,
+  AGENT_ARCHIVE_HOLD,
 } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { REDACTED_EVENT_VALUE, sanitizeRecord } from "../redaction.js";
@@ -339,6 +340,7 @@ export function agentRecordQueries(db: Db) {
     const { lifecycleOperation, lifecycleRequiredPluginIds, harnessVerifiedDigest, harnessVerifiedAt, ...publicRow } = row;
     return withUrlKey({
       ...publicRow,
+      archived: row.status !== "terminated" && row.lifecycleHolds.includes(AGENT_ARCHIVE_HOLD),
       permissions: normalizeAgentPermissions(row.permissions, { role: row.role }),
     });
   }

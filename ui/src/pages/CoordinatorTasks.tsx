@@ -23,6 +23,8 @@ import { useCompany } from "@/context/CompanyContext";
 import { useDialogActions } from "@/context/DialogContext";
 import { useTaskListCollection } from "@/hooks/useTaskListCollection";
 import { useTaskArchiveAction } from "@/hooks/useTaskArchiveAction";
+import { useTaskLifecycle } from "@/hooks/useTaskLifecycle";
+import { useTranslation } from "@/i18n";
 import { useIssueRowDetails } from "@/hooks/useIssueRowDetails";
 import { useCoordinatorWorkspaceEnabled } from "@/hooks/useCoordinatorWorkspaceEnabled";
 import { usePublishSharedQueryData, useSharedPollingQuery } from "@/hooks/useSharedPolling";
@@ -43,6 +45,7 @@ const pageSize = 200;
 /** Coordinator's existing IA and attention feed, rendered with the production
  * components reviewed in Design proposals / Pages / Tasks. */
 export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = {}) {
+  const { t } = useTranslation();
   const { selectedCompanyId: companyId } = useCompany();
   const { userId, loaded: identitySettled } = useCoordinatorWorkspaceEnabled();
   const { openNewIssue } = useDialogActions();
@@ -98,8 +101,11 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
   const previousUrlFilters = useRef({ assignee: urlAssignee, statuses: urlStatuses, labels: urlLabels, view: urlView, routineTasksOnly });
   const needsAttention = view === "blocked";
   const archivedView = urlView === "archived";
+  const organizationArchive = params.get("taskArchive") === "archived";
+  const taskArchive = organizationArchive ? "archived" : "active";
+  const lifecycle = useTaskLifecycle(companyId, organizationArchive);
   const hideArchived = view === "inbox" || view === "unread";
-  const inboxArchive = userId && !needsAttention ? (archivedView ? "archived" : "include") : undefined;
+  const inboxArchive = userId && !needsAttention && !organizationArchive ? (archivedView ? "archived" : "include") : undefined;
   const getArchiveAction = useTaskArchiveAction(companyId, userId);
   const query = params.get("q") ?? "";
   const deferredQuery = useDeferredValue(query.trim());
@@ -119,10 +125,17 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
     next.set("view", nextView === "blocked" ? "needs_attention" : nextView);
     return next;
   });
+  const changeArchiveView = () => setParams(current => {
+    const next = new URLSearchParams(current);
+    next.set("view", "all");
+    next.delete("status");
+    if (organizationArchive) next.delete("taskArchive"); else next.set("taskArchive", "archived");
+    return next;
+  });
   useEffect(() => { setBreadcrumbs([{ label: "Tasks" }]); }, [setBreadcrumbs]);
 
   const tasks = useInfiniteQuery({
-    queryKey: [...queryKeys.issues.list(companyId!), "coordinator-table", "index", userId, deferredQuery, participantAgentId, workspaceIds, originKind, serverSortField, serverSortDir, includeBlockedBy, view === "unread", hideArchived, PERSONAL_ARCHIVE_QUERY_KEY, inboxArchive],
+    queryKey: [...queryKeys.issues.list(companyId!), "coordinator-table", "index", userId, deferredQuery, participantAgentId, workspaceIds, originKind, serverSortField, serverSortDir, includeBlockedBy, view === "unread", hideArchived, PERSONAL_ARCHIVE_QUERY_KEY, inboxArchive, taskArchive],
     queryFn: async ({ pageParam, signal }) => {
       const pages = await Promise.all((workspaceIds.length ? workspaceIds : [undefined]).map(workspaceId => issuesApi.listCompact(companyId!, {
       projection: "index", limit: pageSize, offset: pageParam, includeAgentCreatedTasks: true, includeRoutineExecutions: true,
@@ -131,6 +144,7 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
       unreadForUserId: view === "unread" ? "me" : undefined,
       inboxArchivedByUserId: hideArchived && userId ? "me" : undefined,
       inboxArchive,
+      taskArchive,
       }, { signal })));
       return { items: pages.flat(), hasNextPage: pages.some(page => page.length === pageSize) };
     },
@@ -275,8 +289,8 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
   const enrichItem = (item: TaskListItem): TaskListItem => ({ ...item, issue: enrichIssueRow(item.issue) });
   const narrowed = query || collection.activeFilterCount || view === "inbox" || view === "unread";
   const empty = <EmptyState icon={narrowed ? SearchX : ListChecks}
-    message={narrowed ? "No tasks match this view" : archivedView ? "No archived tasks" : needsAttention ? "No tasks need a decision." : "No tasks in this organization"}
-    action={narrowed ? "Clear filters" : needsAttention || archivedView ? undefined : "New Task"}
+    message={narrowed ? "No tasks match this view" : organizationArchive ? t("taskLifecycle.emptyArchive") : archivedView ? "No archived tasks" : needsAttention ? "No tasks need a decision." : "No tasks in this organization"}
+    action={narrowed ? "Clear filters" : needsAttention || archivedView || organizationArchive ? undefined : "New Task"}
     onAction={narrowed ? clearFilters : () => openNewIssue()} />;
   const issueLinkState = createIssueDetailLocationState("Tasks", `${location.pathname}${location.search}`, "issues");
   const retry = () => {
@@ -291,7 +305,15 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
   if (!companyId) return <EmptyState icon={ListChecks} message="Select an organization to view tasks." />;
   if (archivedView && identitySettled && !userId) return <EmptyState icon={ListChecks} message="Sign in to view archived tasks." />;
   return <FlyoutAppearanceProvider><TruncatedTextMarqueeProvider><section ref={listRef} className="coordinator-task-list task-row-design-preview flex min-w-0 flex-col gap-8" aria-label="Tasks">
-    <TaskListToolbar view={view} onViewChange={setView} viewControl={viewControl}
+    <TaskListToolbar view={view} onViewChange={setView} viewControl={(
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {viewControl}
+        <Button variant="outline" size="sm" onClick={changeArchiveView} disabled={lifecycle.pending}>
+          {t(organizationArchive ? "taskLifecycle.active" : "taskLifecycle.archiveView")}
+        </Button>
+        {collection.layout === "list" && !needsAttention ? lifecycle.batchControls : null}
+      </div>
+    )}
       query={collection.query} onQueryChange={collection.setQuery} layout={collection.layout} onLayoutChange={collection.setLayout}
       allExpanded={collection.allExpanded} onToggleExpanded={collection.toggleExpanded} onNewTask={() => openNewIssue()}
       filters={{ enableRoutineTasksFilter: true, state: collection.filters, onChange: updateFilters, activeFilterCount: collection.activeFilterCount,
@@ -304,10 +326,12 @@ export function CoordinatorTasks({ viewControl }: { viewControl?: ReactNode } = 
         preferenceLocation={userId ? { companyId, collectionKey: `coordinator-tasks:${userId}` } : undefined}
         collectionKey={JSON.stringify([companyId, userId, needsAttention, deferredQuery, participantAgentId, workspaceIds, collection.view, archivedView, collection.filters])}
         sort={sort} onSortChange={setSort} preloadCompanyId={collection.layout === "list" ? companyId : null}
-        getArchiveAction={getArchiveAction} issueLinkState={issueLinkState} collapsedIds={collection.collapsedIds} onCollapsedIdsChange={collection.setCollapsedIds} /> : empty}</div>
+        getArchiveAction={organizationArchive ? undefined : getArchiveAction} getLifecycleActions={lifecycle.rowActions}
+        issueLinkState={issueLinkState} collapsedIds={collection.collapsedIds} onCollapsedIdsChange={collection.setCollapsedIds} /> : empty}</div>
       {collection.layout === "board" ? collection.matchingItems.length
         ? <KanbanBoard showOverflowFades issues={collection.matchingItems.map(item => enrichIssueRow(item.issue))} agents={agents.data} onUpdateIssue={(id, data) => update.mutate({ id, data })} /> : empty : null}
       {!needsAttention && tasks.hasNextPage ? <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span>{view === "unread" ? unreadIds.size : items.length} tasks loaded. Load more to include them in filters.</span><Button variant="outline" size="sm" disabled={tasks.isFetchingNextPage} onClick={() => void tasks.fetchNextPage()}>{tasks.isFetchingNextPage ? "Loading…" : "Load more tasks"}</Button></div> : null}
     </>}
+    {lifecycle.dialog}
   </section></TruncatedTextMarqueeProvider></FlyoutAppearanceProvider>;
 }

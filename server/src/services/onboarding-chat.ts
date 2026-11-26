@@ -34,9 +34,9 @@ export async function ensureOnboardingChat(db: Db, input: {
 
 /** A typed reply or /new supersedes a welcome that has not started yet. */
 export async function onboardingGreetingNeeded(db: Db, issue: {
-  id: string; companyId: string; originKind?: string; conversationSessionGeneration: number;
+  id: string; companyId: string; originKind?: string; conversationSessionGeneration: number; hiddenAt?: Date | null;
 }) {
-  if (issue.originKind !== ONBOARDING_CHAT_ORIGIN_KIND || issue.conversationSessionGeneration !== 0) return false;
+  if (issue.hiddenAt || issue.originKind !== ONBOARDING_CHAT_ORIGIN_KIND || issue.conversationSessionGeneration !== 0) return false;
   const [comment] = await db.select({ id: issueComments.id }).from(issueComments).where(and(
     eq(issueComments.companyId, issue.companyId), eq(issueComments.issueId, issue.id), isNull(issueComments.deletedAt),
   )).limit(1);

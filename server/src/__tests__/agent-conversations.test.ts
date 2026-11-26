@@ -21,6 +21,7 @@ import {
   agentWakeupRequests,
   companyMemberships,
   companies,
+  costEvents,
   createDb,
   heartbeatRuns,
   issueComments,
@@ -247,6 +248,23 @@ import {
         ).status,
       ).toBe(422);
       const chatId = resolved[0].body.id;
+      expect((await request(appFor(colleague)).patch(path).send({ issueId: chatId, title: "Wrong user" })).status).toBe(404);
+      const renamed = await request(app).patch(path).send({ issueId: chatId, title: " Research notes " });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body).toMatchObject({ title: "Research notes", titleNeedsGeneration: false });
+      const active = await runFor(chatId, randomUUID());
+      expect((await request(app).patch(path).send({ issueId: chatId, archived: true })).status).toBe(409);
+      await db.update(heartbeatRuns).set({ status: "succeeded", finishedAt: new Date() }).where(eq(heartbeatRuns.id, active.id));
+      expect((await request(app).patch(path).send({ issueId: chatId, archived: true })).status).toBe(200);
+      expect((await request(app).get(path)).body.hiddenAt).toEqual(expect.any(String));
+      expect((await request(app).get(listPath)).body).toEqual([expect.objectContaining({ id: chatId, hiddenAt: expect.any(String) })]);
+      expect((await request(app).post(`/api/issues/${chatId}/comments`).send({ body: "Restore before sending", clientRequestId: randomUUID() })).status).toBe(409);
+      const restored = await request(app).patch(path).send({ issueId: chatId, archived: false });
+      expect(restored.status).toBe(200);
+      expect(restored.body).toMatchObject({ id: chatId, title: "Research notes", hiddenAt: null });
+      expect((await db.select({ action: activityLog.action }).from(activityLog).where(eq(activityLog.entityId, chatId))).map(row => row.action)).toEqual(expect.arrayContaining([
+        "issue.updated", "issue.conversation_archived", "issue.conversation_restored",
+      ]));
       const queuedInterrupt = { queueId: randomUUID(), revision: "queue-revision", targetRunId: randomUUID() };
       expect((await request(appFor(colleague)).post(`/api/issues/${chatId}/queued-comments/interrupt`)
         .send(queuedInterrupt)).status).toBe(403);
@@ -298,6 +316,22 @@ import {
       await instanceSettingsService(db).updateExperimental({
         enableAgentChat: true,
       });
+      const localId = local.body.id;
+      const localApp = appFor();
+      const [retainedRun] = await db.insert(heartbeatRuns).values({ companyId, agentId, issueId: localId, status: "succeeded" }).returning();
+      const [cost] = await db.insert(costEvents).values({ companyId, agentId, issueId: localId,
+        heartbeatRunId: retainedRun.id, provider: "test", model: "fixture", costCents: 12, occurredAt: new Date() }).returning();
+      expect((await request(localApp).patch(path).send({ issueId: localId, archived: true })).status).toBe(200);
+      expect((await request(app).get(`/api/issues/${localId}/deletion-impact`)).status).toBe(404);
+      const preview = await request(localApp).get(`/api/issues/${localId}/deletion-impact`);
+      expect(preview.status).toBe(200);
+      expect(preview.body.blockers).toEqual([]);
+      expect((await request(localApp).delete(`/api/issues/${localId}`)).status).toBe(400);
+      expect((await request(localApp).delete(`/api/issues/${localId}?confirm=${localId}`)).status).toBe(200);
+      expect((await request(localApp).get(path)).body).toBeNull();
+      expect((await db.select().from(costEvents).where(eq(costEvents.id, cost.id)))[0]).toMatchObject({ issueId: null, costCents: 12, heartbeatRunId: retainedRun.id });
+      expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, retainedRun.id)))[0]).toMatchObject({ issueId: null, status: "succeeded" });
+      expect(await db.select().from(activityLog).where(and(eq(activityLog.entityId, localId), eq(activityLog.action, "issue.deleted")))).toHaveLength(1);
     });
     it("deduplicates concurrent message retries and preserves recoverable delivery", async () => {
       const issue = await create();

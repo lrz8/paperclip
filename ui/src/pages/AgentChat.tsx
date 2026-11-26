@@ -68,7 +68,7 @@ export function AgentChat() {
   useEffect(() => {
     setGreetingError(null);
     if (!enabled || !agent || !selectedCompanyId || !session.isSuccess
-      || readyIssueId !== chat.data?.id || chat.data?.originKind !== "onboarding_chat") return;
+      || readyIssueId !== chat.data?.id || chat.data?.originKind !== "onboarding_chat" || chat.data.hiddenAt) return;
     let cancelled = false;
     const cancelPaint = afterVisibleConversationPaint(() => {
       void agentChatsApi.greet(selectedCompanyId, agent.id).then(() => {
@@ -81,14 +81,14 @@ export function AgentChat() {
       });
     });
     return () => { cancelled = true; cancelPaint(); };
-  }, [enabled, agent?.id, selectedCompanyId, userId, session.isSuccess, readyIssueId, chat.data?.id, chat.data?.originKind, greetingAttempt, client]);
+  }, [enabled, agent?.id, selectedCompanyId, userId, session.isSuccess, readyIssueId, chat.data?.id, chat.data?.originKind, chat.data?.hiddenAt, greetingAttempt, client]);
   useEffect(() => {
     creating.current = null;
   }, [selectedCompanyId, userId, agent?.id]);
   useEffect(() => {
-    if (enabled && agent && session.isSuccess && chat.isSuccess)
+    if (enabled && agent && session.isSuccess && chat.isSuccess && !chat.data?.hiddenAt)
       recordAgentChatVisit(agent.companyId, userId, agent.id, chat.data?.id ?? null);
-  }, [enabled, agent?.id, agent?.companyId, userId, session.isSuccess, chat.isSuccess, chat.data?.id]);
+  }, [enabled, agent?.id, agent?.companyId, userId, session.isSuccess, chat.isSuccess, chat.data?.id, chat.data?.hiddenAt]);
   const ensureIssue = useCallback(async () => {
     if (!agent || !selectedCompanyId) throw new Error("Agent not found");
     if (chat.data) return chat.data;

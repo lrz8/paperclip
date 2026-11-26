@@ -188,6 +188,7 @@ export function redactHeartbeatRunListRow<T extends Record<string, unknown> & { 
     status: row.status,
     startedAt: row.startedAt ?? null,
     finishedAt: row.finishedAt ?? null,
+    archivedAt: row.archivedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     durationMs: runDurationMs(row),

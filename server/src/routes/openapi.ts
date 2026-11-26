@@ -87,6 +87,7 @@ import {
   // Issue
   createIssueSchema,
   setIssueTitleSchema,
+  updateAgentConversationSchema,
   updateIssueSchema,
   stalledReviewDecisionSchema,
   createIssueLabelSchema,
@@ -4492,9 +4493,19 @@ registry.registerPath({
   path: "/api/companies/{companyId}/chats",
   tags: ["issues"],
   summary: "List the current board user's agent conversations",
-  description: "Requires Agent Chat to be enabled. Returns accessible conversations in the company, ordered by most recent activity. Each agent has one conversation per user.",
+  description: "Returns the caller's conversations in the company, including archived history, ordered by most recent activity. Each agent has one conversation per user. A non-null hiddenAt marks an archived conversation.",
   request: { params: z.object({ companyId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/companies/{companyId}/chats/{agentRef}",
+  tags: ["issues"],
+  summary: "Rename, archive or restore the caller's conversation",
+  description: "The issue ID must match the caller's standing conversation. Archive requires pending conversation turns to finish. Restore keeps the transcript and does not queue a reply.",
+  request: { params: z.object({ companyId: z.string(), agentRef: z.string() }), body: jsonBody(updateAgentConversationSchema) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict },
 });
 
 registry.registerPath({
@@ -8164,6 +8175,8 @@ registry.registerPath({
       limit: z.coerce.number().int().min(1).max(1000).default(200),
       summary: z.enum(["true", "false", "1", "0"]).optional(),
       latestFailuresOnly: z.enum(["true", "false"]).optional().describe("Return failures only when the agent's latest run within the bounded result failed or timed out. Applied before read redaction."),
+      archive: z.enum(["active", "archived"]).optional(),
+      beforeRunId: heartbeatRunIdParamSchema.optional(),
     }),
   },
   responses: { 200: r.ok(), 401: r.unauthorized },
@@ -8236,6 +8249,21 @@ registry.registerPath({
   request: { params: z.object({ runId: heartbeatRunIdParamSchema }) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
+
+for (const [action, summary] of [
+  ["archive", "Archive a completed execution"],
+  ["restore", "Restore an archived execution"],
+  ["purge-log", "Remove an archived execution's finalized local output log"],
+] as const) {
+  registry.registerPath({
+    method: "post", path: `/api/heartbeat-runs/{runId}/${action}`, tags: ["runs"], summary,
+    request: {
+      params: z.object({ runId: heartbeatRunIdParamSchema }),
+      ...(action === "purge-log" ? { body: jsonBody(z.object({ confirm: heartbeatRunIdParamSchema })) } : {}),
+    },
+    responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict },
+  });
+}
 
 registry.registerPath({
   method: "post",

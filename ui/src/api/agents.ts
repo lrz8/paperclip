@@ -8,6 +8,7 @@ import type {
   AgentSkillAssignmentMode,
   AgentPermissions,
   AgentDetail,
+  AgentDeleteImpact,
   AgentInstructionsBundle,
   AgentInstructionHistory,
   AgentInstructionCandidate,
@@ -122,7 +123,8 @@ export const agentsApi = {
   adoptAiConnection: (agentId: string, interactionId: string, connectionId: string, companyId: string) =>
     api.post<ConnectionIntentInteraction>(withCompanyScope(`/agents/${agentId}/connection-intents/${interactionId}/adopt`, companyId), { connectionId }),
 
-  list: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents`),
+  list: (companyId: string, includeTerminated = false) =>
+    api.get<Agent[]>(`/companies/${companyId}/agents${includeTerminated ? "?includeTerminated=true" : ""}`),
   org: (companyId: string) => api.get<OrgNode[]>(`/companies/${companyId}/org`),
   listConfigurations: (companyId: string) =>
     api.get<Record<string, unknown>[]>(`/companies/${companyId}/agent-configurations`),
@@ -191,10 +193,14 @@ export const agentsApi = {
   retryLifecycle: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/lifecycle/retry"), {}),
   pause: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/pause"), {}),
   resume: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/resume"), {}),
+  archive: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/archive"), {}),
+  unarchive: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/unarchive"), {}),
   clearError: (id: string, companyId?: string) =>
     api.post<ClearAgentErrorResponse>(agentPath(id, companyId, "/clear-error"), {}),
   approve: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/approve"), {}),
   terminate: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/terminate"), {}),
+  deleteImpact: (id: string, companyId?: string) =>
+    api.get<AgentDeleteImpact>(agentPath(id, companyId, "/delete-impact"), { cache: "no-store" }),
   remove: (id: string, companyId?: string) => api.delete<{ ok: true }>(agentPath(id, companyId)),
   listKeys: (id: string, companyId?: string) => api.get<AgentKey[]>(agentPath(id, companyId, "/keys")),
   skills: (id: string, companyId?: string) =>

@@ -1,7 +1,7 @@
 import { useTranslation } from "@/i18n";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@/lib/router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Pause,
   Play,
@@ -14,8 +14,11 @@ import {
   Trash2,
   CheckCircle2,
   Bug,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Popover,
   PopoverContent,
@@ -180,9 +183,11 @@ export function AgentActionButtons({
   onBeforeNavigate,
   onActionError,
   onTerminateSuccess,
+  onDeleteSuccess,
   pauseConfirm,
   hideTerminate = false,
   workActionsInMenu = false,
+  lifecycleOnly = false,
   menuItems = [],
   children,
   className,
@@ -214,6 +219,7 @@ export function AgentActionButtons({
   hideTerminate?: boolean;
   /** Put Run now, Pause/Resume and Clear error in the overflow menu, leaving Assign task (or Finish setup, while setup is pending) as the one button. */
   workActionsInMenu?: boolean;
+  lifecycleOnly?: boolean;
   /** Extra overflow items shown after the work actions when `workActionsInMenu` is on. */
   menuItems?: ReadonlyArray<{ label: string; icon: typeof Plus; onSelect: () => void; disabled?: boolean }>;
   /**
@@ -223,6 +229,7 @@ export function AgentActionButtons({
    */
   onActionError?: (message: string | null) => void;
   onTerminateSuccess?: (agent: Agent) => void;
+  onDeleteSuccess?: () => void;
   /** Extra content rendered just before the overflow menu (e.g. live-run link). */
   children?: React.ReactNode;
   className?: string;
@@ -236,6 +243,7 @@ export function AgentActionButtons({
   const { pushToast } = useToastActions();
   const [moreOpen, setMoreOpen] = useState(false);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
+  const [confirmLifecycle, setConfirmLifecycle] = useState<"archive" | "terminate" | "delete" | null>(null);
   const pendingNavigationChangesRef = useRef(hasPendingNavigationChanges);
   const beforeNavigateRef = useRef(onBeforeNavigate);
   const agentActionStartedDirtyRef = useRef(false);
@@ -259,6 +267,8 @@ export function AgentActionButtons({
   const resolvedCompanyId = companyId ?? agent.companyId;
   const canonicalAgentRef = agentRouteRef(agent);
   const isPaused = agent.lifecycleState ? agent.lifecycleState === "paused" : agent.status === "paused";
+  const isArchived = agent.archived === true;
+  const isTerminated = agent.status === "terminated";
   const isAgentError = agent.status === "error";
   const needsSetup = agent.pauseReason === "setup" && agent.status !== "terminated"
     && !["terminating", "cleaning_up", "terminated", "rejected"].includes(agent.lifecycleState ?? "");
@@ -281,19 +291,22 @@ export function AgentActionButtons({
     queryClient.invalidateQueries({ queryKey: queryKeys.agents.taskSessions(agent.id) });
     if (resolvedCompanyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(resolvedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(resolvedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(resolvedCompanyId, agent.id) });
     }
   }, [agent.id, canonicalAgentRef, queryClient, resolvedCompanyId]);
 
   const agentAction = useMutation({
-    mutationFn: async (action: "invoke" | "pause" | "resume" | "clear_error" | "approve" | "terminate") => {
+    mutationFn: async (action: "invoke" | "pause" | "resume" | "clear_error" | "approve" | "archive" | "unarchive" | "terminate") => {
       switch (action) {
         case "invoke": return agentsApi.invoke(agent.id, resolvedCompanyId ?? undefined);
         case "pause": return agentsApi.pause(agent.id, resolvedCompanyId ?? undefined);
         case "resume": return agentsApi.resume(agent.id, resolvedCompanyId ?? undefined);
         case "clear_error": return agentsApi.clearError(agent.id, resolvedCompanyId ?? undefined);
         case "approve": return agentsApi.approve(agent.id, resolvedCompanyId ?? undefined);
+        case "archive": return agentsApi.archive(agent.id, resolvedCompanyId ?? undefined);
+        case "unarchive": return agentsApi.unarchive(agent.id, resolvedCompanyId ?? undefined);
         case "terminate": return agentsApi.terminate(agent.id, resolvedCompanyId ?? undefined);
       }
     },
@@ -312,6 +325,23 @@ export function AgentActionButtons({
     onError: (err) => {
       reportError(err instanceof Error ? err.message : t("agentDetail.actionError"));
     },
+  });
+
+  const deletionImpact = useQuery({
+    queryKey: [...queryKeys.agents.detail(agent.id), "delete-impact", resolvedCompanyId],
+    queryFn: () => agentsApi.deleteImpact(agent.id, resolvedCompanyId ?? undefined),
+    enabled: confirmLifecycle === "delete",
+    refetchOnMount: "always",
+  });
+  const remove = useMutation({
+    mutationFn: () => agentsApi.remove(agent.id, resolvedCompanyId ?? undefined),
+    onSuccess: () => {
+      setConfirmLifecycle(null);
+      onActionError?.(null);
+      invalidateAgent();
+      onDeleteSuccess?.();
+    },
+    onError: (error) => reportError(error instanceof Error ? error.message : t("agentDetail.actionError")),
   });
 
   const duplicateAgent = useMutation({
@@ -370,8 +400,8 @@ export function AgentActionButtons({
 
   const isPendingApproval = agent.status === "pending_approval";
   const disabled = actionsDisabled || agentAction.isPending;
-  const assignAndRunDisabled = disabled || isPendingApproval || workActionsDisabled || agent.status === "terminated";
-  const pauseResumeDisabled = disabled || isPendingApproval || (isPaused && workActionsDisabled)
+  const assignAndRunDisabled = disabled || isPendingApproval || workActionsDisabled || isTerminated || isArchived;
+  const pauseResumeDisabled = disabled || isPendingApproval || isArchived || (isPaused && workActionsDisabled)
     || Boolean(agent.lifecycleState && ["pausing", "terminating", "cleaning_up", "terminated", "rejected"].includes(agent.lifecycleState));
   const clearErrorDisabled = disabled;
   const runtimeConfig = agent.runtimeConfig as Record<string, unknown> | null;
@@ -409,7 +439,64 @@ export function AgentActionButtons({
     </AlertDialog>
   ) : null;
 
-  if (workActionsInMenu) {
+  const showArchive = !hideTerminate && !isTerminated && !isPendingApproval && !needsSetup;
+  const stopMenuItem = (item: string, icon: string) => {
+    const Icon = isArchived ? ArchiveRestore : Archive;
+    return <>
+      {showArchive && <button type="button" className={item} disabled={disabled} onClick={() => {
+        setMoreOpen(false);
+        if (isArchived) agentAction.mutate("unarchive");
+        else setConfirmLifecycle("archive");
+      }}><Icon className={icon} />{t(isArchived ? "agentDetail.unarchiveAgent" : "agentDetail.archiveAgent")}</button>}
+      {!hideTerminate && <button type="button" className={cn(item, "text-destructive")} disabled={disabled} onClick={() => {
+        setMoreOpen(false);
+        setConfirmLifecycle(isTerminated ? "delete" : "terminate");
+      }}><Trash2 className={cn(icon, "text-destructive")} />
+        {t(isTerminated ? "agentDetail.deleteAgent" : "agentDetail.terminateAgent")}
+      </button>}
+    </>;
+  };
+  const impact = deletionImpact.data;
+  const lifecycleDialog = <AlertDialog open={confirmLifecycle !== null} onOpenChange={open => {
+    if (!open && !remove.isPending) setConfirmLifecycle(null);
+  }}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{t(confirmLifecycle === "delete" ? "agentDetail.deleteAgent"
+          : confirmLifecycle === "terminate" ? "agentDetail.terminateAgent" : "agentDetail.archiveAgent")}</AlertDialogTitle>
+        <AlertDialogDescription asChild>
+          <div className="space-y-2">
+            <p>{t(confirmLifecycle === "delete" ? "agentDetail.deleteAgentConfirm"
+              : confirmLifecycle === "terminate" ? "agentDetail.terminateAgentConfirm" : "agentDetail.archiveAgentConfirm", { name: agent.name })}</p>
+            {confirmLifecycle === "delete" && <>
+              {deletionImpact.isPending && <p role="status">{t("agentDetail.deleteImpactLoading")}</p>}
+              {deletionImpact.error && <p role="alert">{deletionImpact.error.message}</p>}
+              {impact && <p>{t("agentDetail.deleteAgentCounts", { ...impact.counts })}</p>}
+              {impact?.blockedReason && <p role="alert">{String(t(`agentDetail.deleteBlockers.${impact.blockedCode}`, { defaultValue: impact.blockedReason }))}</p>}
+              {remove.error && <p role="alert">{remove.error.message}</p>}
+            </>}
+          </div>
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel disabled={remove.isPending}>{t("common.cancel")}</AlertDialogCancel>
+        {confirmLifecycle === "delete" ? (
+          <Button variant="destructive" disabled={remove.isPending || deletionImpact.isFetching || !impact?.allowed}
+            onClick={() => { if (!onDeleteSuccess || confirmNavigationStart(agentActionStartedDirtyRef)) remove.mutate(); }}>
+            {t("agentDetail.deleteAgent")}
+          </Button>
+        ) : (
+          <AlertDialogAction onClick={event => {
+            if (confirmLifecycle === "archive") agentAction.mutate("archive");
+            else if (!onTerminateSuccess || confirmNavigationStart(agentActionStartedDirtyRef)) agentAction.mutate("terminate");
+            else event.preventDefault();
+          }}>{t(confirmLifecycle === "terminate" ? "agentDetail.terminateAgent" : "agentDetail.archiveAgent")}</AlertDialogAction>
+        )}
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>;
+
+  if (workActionsInMenu || lifecycleOnly) {
     const item = "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50";
     const icon = "size-4 shrink-0 text-muted-foreground";
     const select = (action: () => void) => () => {
@@ -435,7 +522,7 @@ export function AgentActionButtons({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-52 p-1" align="end">
-            {needsSetup ? (
+            {lifecycleOnly ? null : needsSetup ? (
               <button
                 type="button"
                 className={item}
@@ -461,7 +548,7 @@ export function AgentActionButtons({
                 {runLabel}
               </button>
             ) : null}
-            {needsSetup ? null : isAgentError ? (
+            {needsSetup || isArchived || isTerminated ? null : isAgentError ? (
               <button
                 type="button"
                 className={cn(item, "text-destructive")}
@@ -488,6 +575,7 @@ export function AgentActionButtons({
                 {t("agentDetail.pauseAgent")}
               </button>
             )}
+            {!lifecycleOnly && <>
             <div role="separator" className="-mx-1 my-1 h-px bg-border" />
             {menuItems.map(({ label, icon: Icon, onSelect, disabled: itemDisabled }) => (
               <button key={label} type="button" className={item} disabled={itemDisabled} onClick={select(onSelect)}>
@@ -515,30 +603,17 @@ export function AgentActionButtons({
               <RotateCcw className={icon} />
               {t("agentDetail.resetSessions")}
             </button>
-            {hideTerminate ? null : (
-              <>
-                <div role="separator" className="-mx-1 my-1 h-px bg-border" />
-                <button
-                  type="button"
-                  className={cn(item, "text-destructive")}
-                  onClick={select(() => {
-                    if (onTerminateSuccess && !confirmNavigationStart(agentActionStartedDirtyRef)) return;
-                    agentAction.mutate("terminate");
-                  })}
-                >
-                  <Trash2 className={cn(icon, "text-destructive")} />
-                  {t("agentDetail.terminateAgent")}
-                </button>
-              </>
-            )}
+            </>}
+            {stopMenuItem(item, icon)}
           </PopoverContent>
         </Popover>
-        {showChat && <Button variant="outline" size={size} aria-label={t("agentDetail.chatWithNamedAgent", { name: agent.name })} title={t("agentDetail.chatWithAgentTitle")}
+        {!lifecycleOnly && isArchived && <Badge variant="secondary">{t("agentDetail.archived")}</Badge>}
+        {!lifecycleOnly && showChat && <Button variant="outline" size={size} aria-label={t("agentDetail.chatWithNamedAgent", { name: agent.name })} title={t("agentDetail.chatWithAgentTitle")}
           disabled={disabled} onClick={() => { if (!onBeforeNavigate || onBeforeNavigate()) navigate(`/chats/${canonicalAgentRef}`); }}>
           <MessagesSquare className="size-4" />
           {t("nav.chat")}
         </Button>}
-        {needsSetup ? (
+        {lifecycleOnly ? null : needsSetup ? (
           <Button size={size} disabled={disabled} onClick={finishSetup}>
             <Play className="size-4" />
             {t("agentDetail.finishSetup")}
@@ -555,6 +630,7 @@ export function AgentActionButtons({
           </Button>
         )}
         {pauseDialog}
+        {lifecycleDialog}
       </div>
     );
   }
@@ -599,7 +675,7 @@ export function AgentActionButtons({
         label={runLabel}
         size={size}
       />}
-      {!needsSetup && (agent.status === "error" ? (
+      {!needsSetup && !isArchived && !isTerminated && (agent.status === "error" ? (
         <ClearErrorButton
           onClick={() => agentAction.mutate("clear_error")}
           disabled={clearErrorDisabled}
@@ -634,7 +710,7 @@ export function AgentActionButtons({
       )}
       {showStatus && (
         <span className="hidden sm:inline">
-          <AgentStatusBadge status={agent.status} />
+          {isArchived ? <Badge variant="secondary">{t("agentDetail.archived")}</Badge> : <AgentStatusBadge status={agent.status} />}
         </span>
       )}
       {children}
@@ -679,21 +755,10 @@ export function AgentActionButtons({
             <RotateCcw className="h-3 w-3" />
             {t("agentDetail.resetSessionsTitle")}
           </button>
-          {!hideTerminate && (
-            <button
-              className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
-              onClick={() => {
-                setMoreOpen(false);
-                if (onTerminateSuccess && !confirmNavigationStart(agentActionStartedDirtyRef)) return;
-                agentAction.mutate("terminate");
-              }}
-            >
-              <Trash2 className="h-3 w-3" />
-              {t("agentDetail.terminateAgent")}
-            </button>
-          )}
+          {stopMenuItem("flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50", "h-3 w-3")}
         </PopoverContent>
       </Popover>
+      {lifecycleDialog}
     </div>
   );
 }

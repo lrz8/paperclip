@@ -85,9 +85,10 @@ export function buildCompanyUserMentionOptions(
 }
 
 export function isAgentTaskTarget(
-  agent: Pick<Agent, "status"> & Partial<Pick<Agent, "orgChainHealth" | "appearance">>,
+  agent: Pick<Agent, "status"> & Partial<Pick<Agent, "orgChainHealth" | "appearance" | "archived">>,
 ): boolean {
   return (
+    !agent.archived &&
     agent.status !== "terminated" &&
     agent.status !== "pending_approval" &&
     agent.orgChainHealth?.status !== "invalid_org_chain"

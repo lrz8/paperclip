@@ -114,6 +114,8 @@ export type RuntimeRequestResolution =
 export interface HeartbeatRunListOptions {
   latestFailuresOnly?: boolean;
   summary?: boolean;
+  archive?: "active" | "archived";
+  beforeRunId?: string;
 }
 
 export interface ProviderTraceInspection {
@@ -134,12 +136,16 @@ export const heartbeatsApi = {
     if (limit) searchParams.set("limit", String(limit));
     if (options.summary) searchParams.set("summary", "true");
     if (options.latestFailuresOnly) searchParams.set("latestFailuresOnly", "true");
+    if (options.archive) searchParams.set("archive", options.archive);
+    if (options.beforeRunId) searchParams.set("beforeRunId", options.beforeRunId);
     const qs = searchParams.toString();
     return api.get<HeartbeatRun[]>(
       `/companies/${companyId}/heartbeat-runs${qs ? `?${qs}` : ""}`,
     );
   },
   get: (runId: string) => api.get<HeartbeatRun>(`/heartbeat-runs/${runId}`),
+  changeLifecycle: (runId: string, action: "archive" | "restore" | "purge-log") =>
+    api.post<Pick<HeartbeatRun, "archivedAt" | "logPurgedAt">>(`/heartbeat-runs/${runId}/${action}`, action === "purge-log" ? { confirm: runId } : {}),
   conversationEvents: (runId: string, afterSeq = 0, limit = 200, options?: RequestOptions) =>
     api.get<HeartbeatRunEvent[]>(
       `/heartbeat-runs/${runId}/events?view=conversation&afterSeq=${encodeURIComponent(String(afterSeq))}&limit=${encodeURIComponent(String(limit))}`,

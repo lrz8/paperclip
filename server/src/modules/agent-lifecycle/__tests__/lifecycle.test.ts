@@ -19,7 +19,7 @@ import { errorHandler } from "../../../middleware/error-handler.js";
 import { createLifecycleDriver } from "../../../services/agent-lifecycle-driver.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { agents, approvals, projects, issues, heartbeatRuns, nativeRunFinalizations, budgetPolicies, environmentLeases, environments, agentApiKeys, activityLog, agentConfigRevisions, userCompanyPreferences, companies, companyMemberships, principalPermissionGrants, plugins, pluginCompanySettings, applyPendingMigrations, closeRegisteredClients, createDb, type Db } from "@paperclipai/db";
+import { agents, approvals, projects, issues, costEvents, heartbeatRuns, heartbeatRunEvents, nativeRunFinalizations, budgetPolicies, environmentLeases, environments, agentApiKeys, activityLog, agentConfigRevisions, userCompanyPreferences, companies, companyMemberships, principalPermissionGrants, plugins, pluginCompanySettings, applyPendingMigrations, closeRegisteredClients, createDb, type Db } from "@paperclipai/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "../../../__tests__/helpers/embedded-postgres.js";
 import { createAgentLifecycle, configureAgentLifecycle, startAgentLifecycle } from "../../../services/agent-lifecycle.js";
@@ -29,6 +29,7 @@ import { transition } from "../domain/policy.js";
 import type { LifecycleAgent, LifecycleDriver } from "../application/ports.js";
 import { budgetService } from "../../../services/budgets.js";
 import { agentConfigurationRevision } from "../../../lib/agent-configuration-revision.js";
+import { assertAssignableAgent } from "../../../services/agent-assignability.js";
 
 const createLifecycleStore = (db: Db) => createStore(db, createAgentLifecycleEffects());
 
@@ -59,6 +60,90 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
   }
   async function hire(status = "idle") { return createAgentLifecycle(db).requestHire(companyId, { name: "Agent", status, adapterType: "process" }); }
   async function current(id: string) { return (await db.select().from(agents).where(eq(agents.id, id)))[0]!; }
+
+  it("fences new assignments immediately on archive and restores an independent manual pause", async () => {
+    const work = worker();
+    const lifecycle = createAgentLifecycle(db);
+    const agent = await hire();
+    await work.process(agent.id);
+    await lifecycle.pauseAgent(agent.id);
+    await work.process(agent.id);
+    expect(await lifecycle.archiveAgent(agent.id)).toMatchObject({ status: "paused", archived: true });
+    await expect(assertAssignableAgent(db, companyId, agent.id)).rejects.toMatchObject({
+      status: 409, details: { reason: "assignee_archived" },
+    });
+    await expect(assertAssignableAgent(db, companyId, agent.id, { kind: "routine" })).rejects.toMatchObject({ status: 409 });
+    await expect(lifecycle.resumeAgent(agent.id)).rejects.toThrow("Restore the archived agent");
+    expect(await lifecycle.unarchiveAgent(agent.id)).toMatchObject({ status: "paused", archived: false, pauseReason: "manual" });
+    await expect(assertAssignableAgent(db, companyId, agent.id)).resolves.toBeUndefined();
+    await lifecycle.resumeAgent(agent.id);
+    await work.process(agent.id);
+    expect(await current(agent.id)).toMatchObject({ status: "idle", lifecycleState: "ready" });
+  });
+
+  it("settles execution through the existing stop worker before restoring an archived active agent", async () => {
+    const work = configureAgentLifecycle(db, createLifecycleDriver(db, {} as never));
+    workers.push(work);
+    // The process adapter has a verification step. Use a ready fixture here to test stop ownership.
+    const [agent] = await db.insert(agents).values({ companyId, name: "Archive live fixture", status: "running", lifecycleState: "ready" }).returning();
+    const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId: agent.id, status: "queued" }).returning();
+    const lifecycle = createAgentLifecycle(db);
+    expect(await lifecycle.archiveAgent(agent.id)).toMatchObject({ status: "paused", archived: true });
+    await work.process(agent.id);
+    expect(await current(agent.id)).toMatchObject({ status: "paused", lifecycleState: "paused" });
+    const [cancelled] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, run.id));
+    expect(cancelled.status).toBe("cancelled");
+    expect(await lifecycle.unarchiveAgent(agent.id)).toMatchObject({ archived: false });
+    await work.process(agent.id);
+    expect(await current(agent.id)).toMatchObject({ status: "idle", lifecycleState: "ready" });
+  });
+
+  it("reports archive and protected accounting history through company-scoped board routes", async () => {
+    const work = worker();
+    const agent = await hire();
+    await work.process(agent.id);
+    function app(actor: Express.Request["actor"]) {
+      const value = express();
+      value.use(express.json());
+      value.use((req, _res, next) => { req.actor = actor; next(); });
+      value.use("/api", agentRoutes(db));
+      value.use(errorHandler);
+      return request(value);
+    }
+    const board = app({ type: "board", source: "local_implicit", userId: "board", companyIds: [companyId] });
+    const unrelated = app({ type: "board", source: "session", userId: "unrelated", companyIds: [], memberships: [] });
+    const base = `/api/agents/${agent.id}`;
+    await unrelated.post(`${base}/archive`).send({}).expect(404);
+    await board.post(`${base}/archive`).send({}).expect(200).expect(({ body }) => {
+      expect(body).toMatchObject({ archived: true, status: "paused" });
+    });
+    await board.post(`${base}/resume`).send({}).expect(409);
+    await board.post(`${base}/unarchive`).send({}).expect(200);
+    await board.post(`${base}/terminate`).send({}).expect(200);
+    await work.process(agent.id);
+    await board.get(`/api/companies/${companyId}/agents`).expect(200, []);
+    await board.get(`/api/companies/${companyId}/agents?includeTerminated=true`).expect(200).expect(({ body }) => {
+      expect(body).toMatchObject([{ id: agent.id, status: "terminated" }]);
+    });
+    await db.insert(costEvents).values({ companyId, agentId: agent.id, provider: "fixture", model: "fixture", costCents: 3, occurredAt: new Date() });
+    await board.get(`${base}/delete-impact`).expect(200).expect(({ body }) => {
+      expect(body).toMatchObject({ allowed: false, blockedCode: "agent_cost_history_retained" });
+    });
+    await board.delete(base).expect(409);
+    expect(await current(agent.id)).toMatchObject({ id: agent.id, status: "terminated" });
+    expect(await db.$count(costEvents, eq(costEvents.agentId, agent.id))).toBe(1);
+  });
+
+  it("keeps structured run records when the Agent has no financial history", async () => {
+    const [agent] = await db.insert(agents).values({ companyId, name: "Audit fixture", status: "terminated", lifecycleState: "terminated" }).returning();
+    const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId: agent.id, status: "completed" }).returning();
+    await db.insert(heartbeatRunEvents).values({ companyId, agentId: agent.id, runId: run.id, seq: 1, eventType: "lifecycle", message: "Execution fixture finished" });
+    await expect(createAgentLifecycle(db).purgeAgent(agent.id)).rejects.toMatchObject({
+      status: 409, details: { code: "agent_run_audit_retained" },
+    });
+    expect(await db.$count(heartbeatRunEvents, eq(heartbeatRunEvents.runId, run.id))).toBe(1);
+    expect(await current(agent.id)).toMatchObject({ id: agent.id });
+  });
 
   it.each((["codex", "claude"] as const).flatMap(provider => ["direct", "setup", "approval"].map(path => [provider, path] as const)))("defaults a newly hired %s agent on a warm task environment to warm execution through %s", async (provider, path) => {
     const pluginId = randomUUID(), environmentId = randomUUID();

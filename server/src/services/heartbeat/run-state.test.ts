@@ -1,7 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createFullDatabaseResponseCapture, installDatabaseResponseCapture } from "../../__tests__/helpers/full-database-response-capture.js";
 import type { Db } from "@paperclipai/db";
 import {
+  activityLog,
   agents,
   agentWakeupRequests,
   agentTaskSessions,
@@ -22,6 +26,8 @@ import * as extracted from "./run-state.js";
 import { readRunCancellation } from "../run-cancellation.js";
 import { decideQueuedCommentQueueSteering } from "../issue-queued-comment-queue.js";
 import { STORAGE_UNAVAILABLE_CODE, STORAGE_UNAVAILABLE_HELD_MESSAGE, STORAGE_UNAVAILABLE_MESSAGE } from "../../storage/storage-unavailable.js";
+import { changeRunLifecycle } from "./run-history.js";
+import { createDurableRunLogStore } from "../run-log-store.js";
 
 // SQL_ASCII needs a separate database cluster. Inspect its selected SQL here;
 // the PostgreSQL tests below exercise the session queries and transactions.
@@ -396,6 +402,50 @@ describePostgres("heartbeat run state database wiring", () => {
     expect(await state.listRuns(companyId, agent.id, -10)).toHaveLength(1);
     expect(await state.listRuns(companyId, agent.id, NaN)).toHaveLength(200);
     expect(await state.listRuns(companyId, foreign.agent.id)).toEqual([]);
+  });
+
+  it("archives completed runs, paginates by stable cursor, and reclaims only their finalized log", async () => {
+    const { companyId, agent, issue, state } = await fixture();
+    const basePath = await mkdtemp(join(tmpdir(), "paperclip-run-history-"));
+    const store = createDurableRunLogStore({ basePath });
+    try {
+      const createdAt = new Date();
+      const [run, active] = await db.insert(heartbeatRuns).values([
+        { companyId, agentId: agent.id, issueId: issue.id, status: "succeeded", createdAt, finishedAt: createdAt,
+          usageJson: { inputTokens: 12 }, resultJson: { costUsd: 0.02 } },
+        { companyId, agentId: agent.id, status: "running", createdAt },
+      ]).returning();
+      const handle = await store.begin({ companyId, agentId: agent.id, runId: run!.id });
+      await store.append(handle, { ts: createdAt.toISOString(), stream: "stdout", chunk: "reclaimable output" });
+      const finalized = await store.finalize(handle);
+      await db.update(heartbeatRuns).set({ logStore: handle.store, logRef: handle.logRef, logBytes: finalized.bytes })
+        .where(eq(heartbeatRuns.id, run!.id));
+      const file = join(basePath, handle.logRef);
+      expect((await readFile(file)).byteLength).toBeGreaterThan(0);
+      const mutate = (id: string, action: "archive" | "restore" | "purge-log", scoped = companyId) =>
+        changeRunLifecycle(db, { companyId: scoped, runId: id, userId: "board", action }, () => store);
+      await expect(mutate(active!.id, "archive")).rejects.toThrow("Only completed runs");
+      await expect(mutate(run!.id, "archive", randomUUID())).rejects.toThrow("Heartbeat run not found");
+      await expect(mutate(run!.id, "purge-log")).rejects.toThrow("Only finalized local logs of archived runs");
+      const firstPage = await state.listRuns(companyId, agent.id, 1);
+      const nextPage = await state.listRuns(companyId, agent.id, 1, { beforeRunId: firstPage[0]!.id });
+      expect(new Set([firstPage[0]!.id, nextPage[0]!.id])).toEqual(new Set([run!.id, active!.id]));
+      await mutate(run!.id, "archive");
+      expect((await state.listRuns(companyId, agent.id, 20, { archive: "active" })).map(row => row.id)).toEqual([active!.id]);
+      expect((await state.listRuns(companyId, agent.id, 20, { archive: "archived", summary: true })).map(row => row.id)).toEqual([run!.id]);
+      await mutate(run!.id, "restore");
+      expect(await state.listRuns(companyId, agent.id, 20, { archive: "archived" })).toEqual([]);
+      await mutate(run!.id, "archive");
+      const [purged, repeated] = await Promise.all([mutate(run!.id, "purge-log"), mutate(run!.id, "purge-log")]);
+      expect(purged.logPurgedAt).toBeInstanceOf(Date);
+      expect(repeated).toEqual(purged);
+      await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await state.getRun(run!.id)).toMatchObject({ issueId: issue.id, logRef: null, usageJson: { inputTokens: 12 }, resultJson: { costUsd: 0.02 } });
+      const audit = await db.select({ action: activityLog.action }).from(activityLog).where(eq(activityLog.entityId, run!.id));
+      expect(audit.map(row => row.action).filter(action => action === "heartbeat.log_purged")).toHaveLength(1);
+    } finally {
+      await rm(basePath, { recursive: true, force: true });
+    }
   });
 
   it("lists a previously saved storage retry promise under native recovery truthfully", async () => {

@@ -180,6 +180,7 @@ import {
 } from "./agent-detail-navigation";
 import { LogViewer } from "../components/run-log/LogViewer";
 import { asRecord, asNonEmptyString } from "../components/run-log/RunDetails";
+import { RunLifecycleMenu } from "@/components/run-log/RunLifecycleMenu";
 
 export { LogViewer } from "../components/run-log/LogViewer";
 export {
@@ -919,6 +920,7 @@ export function AgentDetail() {
           onBeforeNavigate={prepareAgentNavigation}
           onActionError={setActionError}
           onTerminateSuccess={() => navigate("/agents/all", { replace: true })}
+          onDeleteSuccess={() => navigate("/agents/terminated", { replace: true })}
           hideTerminate={Boolean(builtInState)}
           pauseConfirm={
             builtInState
@@ -3219,6 +3221,8 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
           <div className="flex-1 p-4 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <StatusBadge status={run.status} />
+              {run.archivedAt && <Badge variant="outline">{t("runLifecycle.archived")}</Badge>}
+              <RunLifecycleMenu run={run} detail />
               <ProviderTraceStatusBadge
                 trace={providerTraceMetadata}
                 requested={runRequestedProviderTrace(run.contextSnapshot)}
@@ -3552,6 +3556,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
       })()}
 
       {/* Log viewer */}
+      {run.logPurgedAt && <p className="text-sm text-muted-foreground">{t("runLifecycle.logRemoved")}</p>}
       <LogViewer run={run} adapterType={adapterType} />
       <ScrollToBottom />
       <RunnerInspector

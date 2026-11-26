@@ -17,7 +17,7 @@ export function buildAgentRosterIndex(agents: readonly Agent[], accounts?: AiCon
   const choices = Object.fromEntries(agentRosterFilterFields.map(field => [field, new Map<string, AgentRosterOption>()])) as Record<AgentRosterFilterField, Map<string, AgentRosterOption>>;
 
   for (const agent of agents) {
-    if (["terminated", "pending_approval"].includes(agent.status)) continue;
+    if (agent.status === "pending_approval") continue;
     const pending = pendingAgentSetupDisplayAdapter(agent);
     const harness = pending ?? bulkAgentHarness(agent);
     const model = agentDefaultModel(agent);

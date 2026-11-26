@@ -1,5 +1,10 @@
 import { PrimaryAgentIndicator } from "@/components/primary-agent/PrimaryAgentPresentation";
 import { AgentBulkRoster } from "@/components/agents/AgentBulkRoster";
+import { AgentLifecycleFilter } from "@/components/agents/AgentLifecycleFilter";
+import { Badge } from "@/components/ui/badge";
+import { ToolbarSearch } from "@/components/ToolbarSearch";
+import { useTranslation } from "@/i18n";
+import { AGENT_FILTER_TABS } from "../lib/agent-filter-tabs";
 import { AgentRosterFilters, useAgentRosterFilters } from "@/components/agents/AgentRosterFilters";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
@@ -40,7 +45,7 @@ const ConfigureBuiltInAgentModal = lazy(() =>
   })),
 );
 
-export const AGENT_FILTER_TABS = ["all", "active", "paused", "error", "builtin"] as const;
+export { AGENT_FILTER_TABS } from "../lib/agent-filter-tabs";
 type FilterTab = (typeof AGENT_FILTER_TABS)[number];
 
 function isFilterTab(value: string): value is FilterTab {
@@ -78,10 +83,15 @@ function matchesFilter(status: string, tab: FilterTab): boolean {
   return true;
 }
 
-function filterAgents(agents: Agent[], tab: FilterTab, builtInAgentIds: Set<string>): Agent[] {
+function filterAgents(agents: Agent[], tab: FilterTab, builtInAgentIds: Set<string>, query: string): Agent[] {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return agents
     .filter((a) => {
-      if (HIDDEN_AGENT_STATUSES.has(a.status)) return false;
+      const text = [a.name, a.role, roleLabels[a.role], a.title].filter(Boolean).join(" ").toLocaleLowerCase();
+      if (!words.every(word => text.includes(word))) return false;
+      if (tab === "terminated") return a.status === "terminated";
+      if (tab === "archived") return a.archived === true;
+      if (HIDDEN_AGENT_STATUSES.has(a.status) || a.archived) return false;
       // The `builtin` filter keys on the built-in marker, not agent status.
       if (tab === "builtin") return builtInAgentIds.has(a.id);
       return matchesFilter(a.status, tab);
@@ -175,6 +185,8 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, builtInAgentIds: Set<st
 }
 
 export function Agents() {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -183,9 +195,10 @@ export function Agents() {
   const { isMobile } = useSidebar();
   const pathSegment = location.pathname.split("/").pop() ?? "all";
   const requestedTab: FilterTab = isFilterTab(pathSegment) ? pathSegment : "all";
-  const [view, setView] = useState<"list" | "org">("org");
+  const tab = requestedTab === "archived" || requestedTab === "terminated" ? requestedTab : "all";
+  const [view, setView] = useState<"list" | "org">("list");
   const forceListView = isMobile;
-  const effectiveView: "list" | "org" = forceListView ? "list" : view;
+  const effectiveView: "list" | "org" = forceListView || tab !== "all" ? "list" : view;
 
   const { data: instanceSettings } = useQuery({
     queryKey: queryKeys.instance.settings,
@@ -193,7 +206,6 @@ export function Agents() {
     enabled: !!selectedCompanyId,
   });
   const builtInAgentsEnabled = instanceSettings?.experimental.enableBuiltInAgents === true;
-  const tab: FilterTab = "all";
   const { data: builtInAgents } = useQuery({
     queryKey: queryKeys.builtInAgents.list(selectedCompanyId!),
     queryFn: () => builtInAgentsApi.list(selectedCompanyId!),
@@ -211,8 +223,8 @@ export function Agents() {
   const [configureState, setConfigureState] = useState<BuiltInAgentState | null>(null);
 
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
+    queryKey: tab === "terminated" ? [...queryKeys.agents.list(selectedCompanyId!), "terminated"] : queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!, tab === "terminated"),
     enabled: !!selectedCompanyId,
   });
   const { data: agents, isLoading } = agentsQuery;
@@ -304,10 +316,10 @@ export function Agents() {
   }, [setBreadcrumbs]);
 
   useEffect(() => {
-    if (requestedTab !== "all") {
+    if (requestedTab !== tab) {
       navigate("/agents/all", { replace: true });
     }
-  }, [navigate, requestedTab]);
+  }, [navigate, requestedTab, tab]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Bot} message="Select a company to view agents." />;
@@ -330,8 +342,8 @@ export function Agents() {
     );
   }
 
-  const filtered = filterAgents(agents ?? [], tab, builtInAgentIds).filter(rosterFilters.matches);
-  const filteredOrg = filterOrgTree(orgTree ?? [], tab, builtInAgentIds, rosterFilters.activeCount ? new Set(filtered.map(agent => agent.id)) : undefined);
+  const filtered = filterAgents(agents ?? [], tab, builtInAgentIds, query).filter(rosterFilters.matches);
+  const filteredOrg = filterOrgTree(orgTree ?? [], tab, builtInAgentIds, query.trim() || rosterFilters.activeCount ? new Set(filtered.map(agent => agent.id)) : undefined);
   const environmentDataLoading = environmentsEnabled && environments === undefined;
   const showEnvironmentColumn = environmentsEnabled && (environments === undefined || environments.length > 1);
   const resolveRenderedEnvironment = (agentId: string) => (
@@ -383,7 +395,7 @@ export function Agents() {
         titleTextClassName="whitespace-normal break-words xl:truncate xl:whitespace-nowrap"
         subtitleClassName="whitespace-normal break-words xl:truncate xl:whitespace-nowrap"
         subtitle={`${roleLabels[agent.role] ?? agent.role}${agent.title ? ` - ${agent.title}` : ""}`}
-        to={agentUrl(agent)}
+        to={agent.status === "terminated" ? `/agents/${agent.id}` : agentUrl(agent)}
         className="agent-roster-identity group py-3"
         leading={hasInvalidOrgChain ? (
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label="Invalid reporting chain" />
@@ -413,16 +425,17 @@ export function Agents() {
           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
         />
       )}
-      <AgentStatusBadge status={agent.status} />
+      {agent.archived ? <Badge variant="secondary">{t("agentDetail.archived")}</Badge> : <AgentStatusBadge status={agent.status} />}
     </div>
   );
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ToolbarSearch query={query} onQueryChange={setQuery} label={t("agents.search")} placeholder={t("agents.searchPlaceholder")} />
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          {!forceListView && (
+          {!forceListView && tab === "all" && (
             <div className="flex items-center border border-border" role="group" aria-label="View mode">
               <button
                 className={cn(
@@ -456,10 +469,11 @@ export function Agents() {
           </Button>
         </div>
       </div>
+      <AgentLifecycleFilter active={tab} />
 
       <AgentRosterFilters {...rosterFilters} count={filtered.length} />
 
-      {agents && agents.length === 0 && (
+      {tab === "all" && agents && agents.length === 0 && (
         <EmptyState
           icon={Bot}
           message="Create your first agent to get started."
@@ -469,9 +483,10 @@ export function Agents() {
       )}
 
       {/* List view */}
-      {effectiveView === "list" && agents && agents.length > 0 && (
-        <AgentBulkRoster key={selectedCompanyId} companyId={selectedCompanyId}
+      {effectiveView === "list" && agents && (agents.length > 0 || tab !== "all") && (
+        <AgentBulkRoster key={`${selectedCompanyId}:${tab}`} companyId={selectedCompanyId}
           agents={agents}
+          builtInAgentIds={builtInAgentIds}
           visibleAgents={filtered} renderAgent={renderAgentRow} renderStatus={renderAgentStatus} />
       )}
 

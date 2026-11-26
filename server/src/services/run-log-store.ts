@@ -499,7 +499,23 @@ export function createDurableRunLogStore(options: DurableRunLogStoreOptions): Ru
       if (handle.store !== "local_file") throw new Error("Invalid local run log backend");
       signal?.throwIfAborted();
       await retireInflightMirror(handle.logRef);
-      await fs.rm(resolveWithin(basePath, handle.logRef), { force: true });
+      const target = resolveWithin(basePath, handle.logRef);
+      const realParent = await fs.realpath(path.dirname(target)).catch(error => {
+        if (error.code !== "ENOENT") throw error;
+        return null;
+      });
+      if (realParent !== null) {
+        const canonicalBase = await fs.realpath(basePath);
+        if (realParent !== path.dirname(resolveWithin(canonicalBase, handle.logRef))) {
+          throw new Error("Run log directory is an alias");
+        }
+        const file = await fs.lstat(target).catch(error => {
+          if (error.code !== "ENOENT") throw error;
+          return null;
+        });
+        if (file && (!file.isFile() || file.nlink !== 1)) throw new Error("Run log is not a private file");
+        await fs.unlink(target).catch(error => { if (error.code !== "ENOENT") throw error; });
+      }
       if (s3) await s3.provider.deleteObject({ objectKey: s3Key(handle.logRef), signal });
     },
 

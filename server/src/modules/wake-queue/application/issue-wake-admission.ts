@@ -5,6 +5,8 @@ type ConversationWakeIssue = {
   conversationAgentId: string | null;
   conversationUserId: string | null;
   conversationState: string | null;
+  hiddenAt?: Date | null;
+  taskArchivedAt?: Date | null;
   status: string;
   originKind: string | null;
 };
@@ -26,11 +28,13 @@ export function createIssueWakePreflight(readIssue: (companyId: string, issueId:
     | { kind: "conversation_owner_required"; action: "start" | "retry" }
   > {
     const issue = await readIssue(input.companyId, input.issueId);
+    if (issue?.taskArchivedAt) return { kind: "skipped" };
     if (input.taskRetryActorId && issue && !canActorRetryConversation(issue, input.taskRetryActorId)) {
       return { kind: "conversation_owner_required", action: "retry" };
     }
     const onboardingCompletion = input.reason === "issue_children_completed" && issue?.originKind === "onboarding_first_task";
     if (issue && isConversation(issue)) {
+      if (issue.hiddenAt) return { kind: "skipped" };
       if (input.reason === "onboarding_chat_greeting" && (issue.originKind !== "onboarding_chat"
         || issue.conversationUserId !== input.requestedByActorId)) return { kind: "skipped" };
       if (input.manualUserWake && issue.conversationUserId !== input.requestedByActorId) {

@@ -1,6 +1,7 @@
 import { agents, type Db } from "@paperclipai/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { conflict } from "../../../errors.js";
+import { isForeignKeyViolation } from "../../../db-errors.js";
 import { agentRecordQueries } from "../../../lib/agent-records.js";
 import { readBuiltInAgentMarker } from "../../../lib/built-in-agent-metadata.js";
 import { assertAgentPurgeAllowed } from "../domain/policy.js";
@@ -23,5 +24,12 @@ export async function purgeAgent(db: Db, effects: LifecycleEffects, id: string) 
       eq(agents.id, id), inArray(agents.lifecycleState, ["terminated", "rejected"]),
     )).returning();
     return deleted ? normalizeAgentRow(deleted) : null;
+  }).catch(error => {
+    if (isForeignKeyViolation(error)) {
+      throw conflict("A linked record requires this agent. Keep the agent terminated to preserve its history", {
+        code: "agent_linked_history_retained",
+      });
+    }
+    throw error;
   });
 }

@@ -20,6 +20,8 @@ import { PLUGIN_RUNNER_AI_CONNECTION_REQUIRED, pluginEnvironmentRunnerTaskDriver
 import { agentEnvironmentTestService } from "../services/agent-environment-test.js";
 import { qualifyAgentRunner } from "../services/agent-runner-qualification.js";
 import { createAgentLifecycle } from "../services/agent-lifecycle.js";
+import { previewAgentDeletion } from "../services/agent-deletion.js";
+import { readBuiltInAgentMarker } from "../lib/built-in-agent-metadata.js";
 import { isAgentSetupDraft } from "../modules/agent-lifecycle/index.js";
 
 import { agentIdentityService } from "../services/agent-identity.js";
@@ -146,6 +148,7 @@ import {
   workspaceOperationService,
 } from "../services/index.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
+import { changeRunLifecycle } from "../services/heartbeat/run-history.js";
 import { ONBOARDING_FIRST_TASK_SKILL_KEY, PAPERCLIP_CORE_SKILL_KEYS } from "../services/company-skills.js";
 import { createRunSecretRedactionRegistry } from "../services/run-secret-redaction.js";
 import { agentBudgetPage, assertAuthenticated, assertBoard, assertCompanyAccess, COMPANY_BUDGETS_PAGE, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
@@ -4083,14 +4086,19 @@ export function agentRoutes(
   router.get("/companies/:companyId/agents", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const unsupportedQueryParams = Object.keys(req.query).sort();
+    const unsupportedQueryParams = Object.keys(req.query).filter((key) => key !== "includeTerminated").sort();
     if (unsupportedQueryParams.length > 0) {
       res.status(400).json({
         error: `Unsupported query parameter${unsupportedQueryParams.length === 1 ? "" : "s"}: ${unsupportedQueryParams.join(", ")}`,
       });
       return;
     }
-    const result = await filterAgentsForActor(req, await svc.list(companyId));
+    const includeTerminated = req.query.includeTerminated === "true";
+    if (req.query.includeTerminated !== undefined && !includeTerminated) {
+      throw badRequest("includeTerminated must be true");
+    }
+    if (includeTerminated) assertBoard(req);
+    const result = await filterAgentsForActor(req, await svc.list(companyId, { includeTerminated }));
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
       res.json(result.map((agent) => redactAgentRowForResponse(agent)));
@@ -6020,6 +6028,35 @@ export function agentRoutes(
     res.json(redactAgentRowForResponse(agent));
   });
 
+  function setAgentArchived(archived: boolean) {
+    return async (req: Request, res: Response) => {
+      assertBoard(req);
+      const id = req.params.id as string;
+      const existing = await getAccessibleAgent(req, res, id);
+      if (!existing) return;
+      await assertCanUpdateAgent(req, existing);
+      if (archived && readBuiltInAgentMarker(existing.metadata)) throw conflict("Pause built-in agents instead of archiving them");
+      const agent = await (archived ? svcLifecycle.archiveAgent(id) : svcLifecycle.unarchiveAgent(id));
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: agent.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: archived ? "agent.archived" : "agent.unarchived",
+        entityType: "agent",
+        entityId: agent.id,
+      });
+      res.json(redactAgentRowForResponse(agent));
+    };
+  }
+
+  router.post("/agents/:id/archive", setAgentArchived(true));
+  router.post("/agents/:id/unarchive", setAgentArchived(false));
+
   router.post("/agents/:id/resume", async (req, res) => {
     const id = req.params.id as string;
     const existing = await getAccessibleAgent(req, res, id);
@@ -6179,12 +6216,20 @@ export function agentRoutes(
     res.json(redactAgentRowForResponse(agent));
   });
 
+  router.get("/agents/:id/delete-impact", async (req, res) => {
+    assertBoard(req);
+    const existing = await getAccessibleAgent(req, res, req.params.id as string);
+    if (!existing) return;
+    await assertCanUpdateAgent(req, existing);
+    res.json(await previewAgentDeletion(db, existing));
+  });
+
   router.delete("/agents/:id", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
-    if (!(await getAccessibleAgent(req, res, id))) {
-      return;
-    }
+    const existing = await getAccessibleAgent(req, res, id);
+    if (!existing) return;
+    await assertCanUpdateAgent(req, existing);
     const agent = await svc.remove(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -7225,7 +7270,11 @@ export function agentRoutes(
       ? Math.max(1, Math.min(HEARTBEAT_RUN_LIST_MAX_LIMIT, parseInt(limitParam, 10) || HEARTBEAT_RUN_LIST_DEFAULT_LIMIT))
       : HEARTBEAT_RUN_LIST_DEFAULT_LIMIT;
     const summary = req.query.summary === "true" || req.query.summary === "1";
-    const recentRuns = await heartbeat.list(companyId, agentId, limit, { summary });
+    const archive = req.query.archive;
+    if (archive !== undefined && archive !== "active" && archive !== "archived") throw badRequest("Invalid run archive filter");
+    const before = req.query.beforeRunId;
+    if (before !== undefined && (typeof before !== "string" || before !== before.trim() || !isUuidLike(before))) throw badRequest("Invalid run cursor");
+    const recentRuns = await heartbeat.list(companyId, agentId, limit, { summary, archive, beforeRunId: before });
     const runs = req.query.latestFailuresOnly === "true" ? latestFailedRunsByAgent(recentRuns) : recentRuns;
     const readDecisions = await getHeartbeatRunReadDecisions(db, access, req.actor, runs);
     res.json(await runRedactions.redactForRuns(companyId, runs.map((run, index) =>
@@ -7419,6 +7468,18 @@ export function agentRoutes(
       req.actor.type === "board" ? getActorInfo(req).actorId : null,
     ));
   });
+
+  for (const action of ["archive", "restore", "purge-log"] as const) {
+    router.post(`/heartbeat-runs/:runId/${action}`, async (req, res) => {
+      assertBoard(req);
+      const runId = readHeartbeatRunId(req);
+      const run = await getAccessibleResource(req, res, heartbeat.getRunReadAccess(runId), "Heartbeat run not found");
+      if (!run || !(await assertRunTelemetryReadAllowed(req, res, run.companyId))) return;
+      if (!(await assertRunReadAllowed(req, res, run))) return;
+      if (action === "purge-log" && req.body?.confirm !== runId) throw badRequest("Confirm the run ID to permanently remove its log");
+      res.json(await changeRunLifecycle(db, { companyId: run.companyId, runId, userId: getActorInfo(req).actorId, action }));
+    });
+  }
 
   router.post("/heartbeat-runs/:runId/cancel", async (req, res) => {
     assertBoard(req);

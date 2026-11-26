@@ -55,6 +55,7 @@ export interface IssueRowProps {
   metadata?: ReactNode;
   /** Stable interactive action slot before the identifier and timestamp columns. */
   actions?: ReactNode;
+  lifecycleActions?: ReactNode;
   /** Controls the canonical trailing identifier without affecting legacy layouts. */
   showIdentifier?: boolean;
   mobileLeading?: ReactNode;
@@ -160,6 +161,7 @@ export function IssueRow({
   statusSlot,
   metadata,
   actions,
+  lifecycleActions,
   showIdentifier = true,
   mobileLeading,
   desktopMetaLeading,
@@ -469,6 +471,7 @@ export function IssueRow({
               </>
             )}
           </span>
+          {lifecycleActions ? <span className="flex shrink-0 items-center gap-1">{lifecycleActions}</span> : null}
           {personalArchiveControl ? (
             <span
               role={refreshed && columnValues ? "cell" : undefined}
@@ -627,6 +630,7 @@ export function IssueRow({
           ) : null}
         </span>
       ) : null}
+      {lifecycleActions ? <span className="flex shrink-0 items-center gap-1 sm:order-4">{lifecycleActions}</span> : null}
       {personalArchiveControl ? <span className="shrink-0 self-center sm:order-4">{personalArchiveControl}</span> : null}
       {showUnreadDot ? (
         // Inbox rows reserve a mobile gutter on both read and unread rows. The

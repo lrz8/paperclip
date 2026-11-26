@@ -2,23 +2,29 @@ import { usePrimaryAgentPresentation } from "@/components/primary-agent/PrimaryA
 import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { AgentConversationHistory } from "@/components/AgentConversationHistory";
 import { QueryErrorState, useQueryView } from "@/components/QueryView";
 import { Button } from "@/components/ui/button";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useAgentChatNavigation, useOpenAgentChat } from "@/hooks/useAgentChatNavigation";
 import { recordedAgentChatIssueId, useRecentAgentChats } from "@/lib/recent-agent-chats";
-import { Link, useNavigate } from "@/lib/router";
+import { Link, useNavigate, useSearchParams } from "@/lib/router";
 import { agentRouteRef } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 
 export function AgentChats() {
+  const { t } = useTranslation();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { companyId, userId, enabled, loaded, agents, chats, session } = useAgentChatNavigation();
-  useEffect(() => setBreadcrumbs([{ label: "Chat" }]), [setBreadcrumbs]);
+  useEffect(() => setBreadcrumbs([{ label: t("nav.chat") }]), [setBreadcrumbs, t]);
   return <AgentChatsContent key={`${companyId}:${userId}`} companyId={companyId} userId={userId}
     enabled={enabled} loaded={loaded} agents={agents} chats={chats} session={session} />;
 }
 
 function AgentChatsContent({ companyId, userId, enabled, loaded, agents, chats, session }: Pick<ReturnType<typeof useAgentChatNavigation>, "companyId" | "userId" | "enabled" | "loaded" | "agents" | "chats" | "session">) {
+  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const showHistory = searchParams.has("history");
   const primary = usePrimaryAgentPresentation(companyId);
   const openChat = useOpenAgentChat(companyId, userId);
   const navigate = useNavigate();
@@ -42,6 +48,7 @@ function AgentChatsContent({ companyId, userId, enabled, loaded, agents, chats, 
       const agent = agents.data?.find(item => item.id === id);
       const historyIssue = chats.data?.find(chat => chat.conversationAgentId === id);
       const savedIssueId = recordedAgentChatIssueId(companyId, userId, id);
+      if (historyIssue?.hiddenAt) return null;
       // A deleted or inaccessible issue must not silently reopen as a new chat.
       if (savedIssueId && chats.isSuccess && historyIssue?.id !== savedIssueId) return null;
       if (agent) return `/chats/${encodeURIComponent(agentRouteRef(agent))}`;
@@ -50,9 +57,10 @@ function AgentChatsContent({ companyId, userId, enabled, loaded, agents, chats, 
     }).find((path): path is string => path !== null)
     : undefined;
   const primaryAgent = agents.data?.find(agent => agent.id === primary?.primaryAgentId
-    && agent.status !== "terminated" && agent.status !== "pending_approval");
-  const entryPath = recentChatPath ?? (loaded && enabled && !blockingError && !resolvingRecent
-    && agents.isFetched && session.isFetched && !primary?.loading && primaryAgent
+    && agent.status !== "terminated" && agent.status !== "pending_approval"
+    && !chats.data?.some(chat => chat.conversationAgentId === agent.id && chat.hiddenAt));
+  const entryPath = showHistory ? undefined : recentChatPath ?? (loaded && enabled && !blockingError && !resolvingRecent
+    && agents.isFetched && session.isFetched && chats.isFetched && !primary?.loading && primaryAgent
     ? `/chats/${encodeURIComponent(agentRouteRef(primaryAgent))}` : undefined);
   useEffect(() => {
     if (entryPath) navigate(entryPath, { replace: true });
@@ -60,6 +68,11 @@ function AgentChatsContent({ companyId, userId, enabled, loaded, agents, chats, 
   if (!loaded) return <p role="status" className="text-sm text-muted-foreground">Loading chat…</p>;
   if (!enabled) return <p className="text-sm text-muted-foreground">Agent Chat is off for this instance. An administrator can enable it in <Link className="underline underline-offset-4" to="/company/settings/instance/experimental#experimental-enableAgentChat">Experimental settings</Link>. Your workspace preference does not change Chat availability.</p>;
   if (!companyId) return <p className="text-sm text-muted-foreground">Select a company to start a conversation.</p>;
+  if (showHistory) {
+    if (chatsView.kind === "error") return <QueryErrorState error={chatsView.error} action={t("conversationLifecycle.loadHistory")} onRetry={chatsView.retry} />;
+    if (!chats.data) return <p role="status" className="text-sm text-muted-foreground">{t("conversationLifecycle.loading")}</p>;
+    return <AgentConversationHistory chats={chats.data} agents={agents.data ?? []} userId={userId} />;
+  }
   if (reconnecting) return <p role="status" className="text-sm text-muted-foreground">Loading chat…</p>;
   if (resolvingRecent || entryPath || primary?.loading) return <p role="status" className="text-sm text-muted-foreground">Opening chat…</p>;
   const error = blockingError ?? (recentIds.length > 0 && chatsView.kind === "error" ? chats.error : null);
@@ -83,6 +96,9 @@ function AgentChatsContent({ companyId, userId, enabled, loaded, agents, chats, 
       </div>}
     {openError && <p role="alert" className="text-sm text-destructive">{openError}</p>}
     {agents.data?.length === 0 && <p className="text-sm text-muted-foreground">Add an agent to start a conversation.</p>}
-    <Button variant="ghost" className="self-start" asChild><Link to="/agents/all">Browse all agents</Link></Button>
+    <div className="flex flex-wrap gap-2">
+      <Button variant="ghost" asChild><Link to="/agents/all">Browse all agents</Link></Button>
+      <Button variant="ghost" asChild><Link to="/chats?history=1">{t("conversationLifecycle.history")}</Link></Button>
+    </div>
   </div>;
 }

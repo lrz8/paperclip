@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { agents, userCompanyPreferences, type Db } from "@paperclipai/db";
-import type { PrimaryAgentPreference } from "@paperclipai/shared";
+import { AGENT_ARCHIVE_HOLD, type PrimaryAgentPreference } from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
 import { persistActivity, publishActivity } from "./activity-log.js";
 import { resourceMembershipService } from "./resource-memberships.js";
@@ -54,7 +54,7 @@ export function primaryAgentService(db: Db) {
         const [agent] = await tx.select().from(agents)
           .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId))).for("update");
         if (!agent) throw notFound("Agent not found");
-        if (agent.status === "terminated" || agent.status === "pending_approval") {
+        if (agent.status === "terminated" || agent.status === "pending_approval" || agent.lifecycleHolds.includes(AGENT_ARCHIVE_HOLD)) {
           throw unprocessable("Choose an active, approved agent as your primary.");
         }
         await resourceMembershipService(txDb).updateAgent({ companyId, userId, agentId, state: "joined", actor });

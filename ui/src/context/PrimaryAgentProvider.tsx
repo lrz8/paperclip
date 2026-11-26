@@ -54,7 +54,7 @@ export function PrimaryAgentProvider({ children }: { children: ReactNode }) {
       void client.invalidateQueries({ queryKey: queryKeys.resourceMemberships.mine(choice.companyId) });
     },
   });
-  const primaryAgent = roster.data?.find(agent => agent.id === preference.data?.primaryAgentId && agent.status !== "terminated") ?? null;
+  const primaryAgent = roster.data?.find(agent => agent.id === preference.data?.primaryAgentId && !agent.archived && agent.status !== "terminated") ?? null;
   const error = preference.error ?? roster.error;
   return <PrimaryAgentPresentationProvider value={companyId ? {
     companyId, primaryAgentId: primaryAgent?.id ?? null, primaryAgent,

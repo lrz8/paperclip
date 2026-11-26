@@ -1,6 +1,8 @@
 import { useTranslation } from "@/i18n";
 import { PrimaryAgentIndicator } from "@/components/primary-agent/PrimaryAgentPresentation";
 import { AgentBulkRoster } from "@/components/agents/AgentBulkRoster";
+import { AgentLifecycleFilter } from "@/components/agents/AgentLifecycleFilter";
+import { Badge } from "@/components/ui/badge";
 import { AgentRosterFilters, useAgentRosterFilters } from "@/components/agents/AgentRosterFilters";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AgentChatPin, useAgentChatPins } from "@/components/AgentChatPin";
@@ -75,9 +77,7 @@ const loadingEnvironmentDescriptor: EnvironmentDescriptor = {
   title: "Loading environment",
 };
 
-// Agents in these states never appear in the agents list — `terminated` is
-// hidden like an archived company, and `pending_approval` is a hiring gate that
-// lives in the task thread, not an agent run state (PAP-75).
+// The organization tree promotes visible reports when their manager is hidden.
 const HIDDEN_AGENT_STATUSES = new Set(["terminated", "pending_approval"]);
 
 function matchesFilter(status: string, tab: FilterTab): boolean {
@@ -97,7 +97,10 @@ function matchesSearch(agent: Pick<Agent, "name" | "role" | "title">, query: str
 export function filterAgents(agents: Agent[], tab: FilterTab, builtInAgentIds: Set<string>, query = ""): Agent[] {
   return agents
     .filter((a) => {
-      if (HIDDEN_AGENT_STATUSES.has(a.status) || !matchesSearch(a, query)) return false;
+      if (!matchesSearch(a, query)) return false;
+      if (tab === "terminated") return a.status === "terminated";
+      if (tab === "archived") return a.archived === true;
+      if (HIDDEN_AGENT_STATUSES.has(a.status) || a.archived) return false;
       // The `builtin` filter keys on the built-in marker, not agent status.
       if (tab === "builtin") return builtInAgentIds.has(a.id);
       return matchesFilter(a.status, tab);
@@ -213,10 +216,11 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
   const pathSegment = location.pathname.split("/").pop() ?? "all";
   const requestedTab: FilterTab = isFilterTab(pathSegment) ? pathSegment : "all";
+  const tab = requestedTab === "archived" || requestedTab === "terminated" ? requestedTab : "all";
   const previewTasks = import.meta.env.DEV && new URLSearchParams(location.search).get("orgTasks") === "demo";
   const [view, setView] = useState<AgentsView>(() => previewTasks ? "org" : streamlinedUiEnabled ? initialView : "org");
   const forceListView = !streamlinedUiEnabled && isMobile;
-  const effectiveView: AgentsView = forceListView ? "list" : view;
+  const effectiveView: AgentsView = forceListView || tab !== "all" ? "list" : view;
 
   useEffect(() => {
     setView(previewTasks ? "org" : streamlinedUiEnabled ? initialView : "org");
@@ -228,7 +232,6 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
     enabled: !!selectedCompanyId,
   });
   const builtInAgentsEnabled = instanceSettings?.experimental.enableBuiltInAgents === true;
-  const tab: FilterTab = "all";
   const { data: builtInAgents } = useQuery({
     queryKey: queryKeys.builtInAgents.list(selectedCompanyId!),
     queryFn: () => builtInAgentsApi.list(selectedCompanyId!),
@@ -246,8 +249,8 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   const [configureState, setConfigureState] = useState<BuiltInAgentState | null>(null);
 
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
+    queryKey: tab === "terminated" ? [...queryKeys.agents.list(selectedCompanyId!), "terminated"] : queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!, tab === "terminated"),
     enabled: !!selectedCompanyId,
   });
   const { data: agents, isLoading } = agentsQuery;
@@ -333,12 +336,12 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   }, [setBreadcrumbs, t]);
 
   useEffect(() => {
-    if (requestedTab !== "all") {
+    if (requestedTab !== tab) {
       navigate("/agents/all", { replace: true });
     }
-  }, [navigate, requestedTab]);
+  }, [navigate, requestedTab, tab]);
 
-  const eligibleAgents = useMemo(() => (agents ?? []).filter(agent => !HIDDEN_AGENT_STATUSES.has(agent.status)), [agents]);
+  const eligibleAgents = useMemo(() => (agents ?? []).filter(agent => agent.status !== "pending_approval"), [agents]);
   const filtered = useMemo(() => filterAgents(eligibleAgents, tab, builtInAgentIds, query)
     .filter(rosterFilters.matches), [eligibleAgents, tab, builtInAgentIds, query, rosterFilters.matches]);
   // Keep hierarchy placement stable while search/filter only changes card emphasis.
@@ -410,7 +413,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
         titleTextClassName="truncate"
         subtitleClassName="truncate"
         subtitle={`${roleLabels[agent.role] ?? agent.role}${agent.title ? ` - ${agent.title}` : ""}`}
-        to={agentUrl(agent)}
+        to={agent.status === "terminated" ? `/agents/${agent.id}` : agentUrl(agent)}
         className="agent-roster-identity group py-3 group-hover/agent-pin:bg-accent/50 group-focus-within/agent-pin:bg-accent/50"
         leading={hasInvalidOrgChain ? (
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label={t("agents.reportingInvalid")} />
@@ -428,7 +431,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
           </div>
         )}
       />
-      <AgentChatPin agent={agent} pins={agentChatPins} />
+      {!agent.archived && agent.status !== "terminated" && <AgentChatPin agent={agent} pins={agentChatPins} />}
       </div>
     );
   };
@@ -442,7 +445,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
         />
       )}
-      <AgentStatusBadge status={agent.status} />
+      {agent.archived ? <Badge variant="secondary">{t("agentDetail.archived")}</Badge> : <AgentStatusBadge status={agent.status} />}
     </div>
   );
 
@@ -453,13 +456,14 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
     )}>
       <div className={effectiveView === "org" ? "agents-org-toolbar" : undefined}>
         <AgentsToolbar orgActions={visibleOrg.length ? chartActions : undefined} orgControlsRef={setOrgControlsContainer} query={query} onQueryChange={setQuery} view={effectiveView} onViewChange={setView}
-          hideViewToggle={forceListView} onNewAgent={openNewAgent}
+          hideViewToggle={forceListView || tab !== "all"} onNewAgent={openNewAgent}
           filters={<AgentRosterFilters {...rosterFilters} count={filtered.length} compact />} />
       </div>
+      <AgentLifecycleFilter active={tab} />
 
       <div className={cn("min-h-0 space-y-4", effectiveView === "org" && "agents-org-content flex flex-1 flex-col")}>
 
-      {agents && agents.length === 0 && (
+      {tab === "all" && agents && agents.length === 0 && (
         <EmptyState
           icon={Bot}
           message={t("agents.first")}
@@ -469,11 +473,12 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
       )}
 
       {/* List view */}
-      {effectiveView === "list" && agents && agents.length > 0 && (
-        <AgentBulkRoster key={selectedCompanyId} companyId={selectedCompanyId}
+      {effectiveView === "list" && agents && (agents.length > 0 || tab !== "all") && (
+        <AgentBulkRoster key={`${selectedCompanyId}:${tab}`} companyId={selectedCompanyId}
           agents={eligibleAgents}
+          builtInAgentIds={builtInAgentIds}
           visibleAgents={filtered} renderAgent={renderAgentRow} renderStatus={renderAgentStatus}
-          renderChat={agentChat.enabled ? agent => (
+          renderChat={agentChat.enabled && tab === "all" ? agent => (
             // Use Radix's standard hover delay, isolated from the app's instant provider.
             <TooltipPrimitive.Provider skipDelayDuration={0}>
               <Tooltip>

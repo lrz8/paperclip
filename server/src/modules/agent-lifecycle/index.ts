@@ -67,7 +67,7 @@ export function createAgentLifecycle(db: Db, effects: LifecycleEffects) {
   assertRootDatabase(db);
   const records = agentRecords(db, effects);
   const store = createLifecycleStore(db, effects);
-  async function change(id: string, command: "pause" | "resume" | "terminate" | "retry", reason?: string) {
+  async function change(id: string, command: "pause" | "resume" | "archive" | "unarchive" | "terminate" | "retry", reason?: string) {
     const result = await store.change(id, command, { reason });
     if (result) scheduleAgentLifecycle(db, id);
     return result ? records.getById(id) : null;
@@ -113,6 +113,8 @@ export function createAgentLifecycle(db: Db, effects: LifecycleEffects) {
     },
     pauseAgent: (id: string, reason = "manual") => change(id, "pause", reason),
     resumeAgent: (id: string, reason = "user") => change(id, "resume", reason),
+    archiveAgent: (id: string) => change(id, "archive"),
+    unarchiveAgent: (id: string) => change(id, "unarchive"),
     terminateAgent: (id: string) => change(id, "terminate"),
     retry: (id: string) => change(id, "retry"),
     clearError: records.clearError,

@@ -58,6 +58,10 @@ describe("issue wake preflight", () => {
     { label: "explicit reason over execution context", issue: activeConversation,
       reasons: { reason: "issue_commented", wakeReason: "issue_children_completed" },
       result: { kind: "eligible", onboardingCompletion: false } },
+    { label: "archived conversation", issue: { ...activeConversation, hiddenAt: new Date() },
+      reasons: { reason: "issue_commented", hasIndependentConversationWakeCause: true }, result: { kind: "skipped" } },
+    { label: "archived task", issue: { ...onboardingTask, taskArchivedAt: new Date() },
+      reasons: { reason: "issue_children_completed" }, result: { kind: "skipped" } },
   ])("handles $label", async ({ issue, reasons, result }) => {
     const preflight = createIssueWakePreflight(async () => issue);
     await expect(preflight({ ...input, ...reasons })).resolves.toEqual(result);

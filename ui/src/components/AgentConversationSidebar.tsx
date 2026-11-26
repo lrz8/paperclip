@@ -1,5 +1,5 @@
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { PanelLeftOpen, Plus, Search, Users, X } from "lucide-react";
+import { History, PanelLeftOpen, Plus, Search, Users, X } from "lucide-react";
 import { SortablePinnedList, SortablePinnedRow } from "./PinnedNavigationList";
 import { Badge } from "./ui/badge";
 import type { Agent } from "@paperclipai/shared";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "@/lib/router";
 import { agentRouteRef, cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 
 export interface AgentConversationSidebarProps {
   agents: Agent[];
@@ -18,6 +19,8 @@ export interface AgentConversationSidebarProps {
   availableAgents?: Agent[];
   activeId?: string;
   previews?: Record<string, string>;
+  titles?: Record<string, string>;
+  showHistory?: boolean;
   unreadAgentIds?: readonly string[];
   unreadMessageCounts?: ReadonlyMap<string, number>;
   loading?: boolean;
@@ -40,8 +43,9 @@ const NO_PINNED_AGENTS: readonly string[] = [];
 const contactRowClassName = "agent-pin-row agent-contact-pin-row group/agent-pin relative rounded-md";
 
 /** Searchable navigation for one conversation per agent. */
-export function AgentConversationSidebar({ agents, compact = false, existingChatAgentIds, availableAgents = agents, activeId, previews = {}, unreadAgentIds = [], unreadMessageCounts, loading = false, error, onRetry, initialSearch = "", onSelect, onBrowse, onAddChat, historyLoading, historyError, onRetryHistory, onCreateAgent, renderAgentAction, pinnedAgentIds = NO_PINNED_AGENTS, onReorderPins }: AgentConversationSidebarProps) {
+export function AgentConversationSidebar({ agents, compact = false, existingChatAgentIds, availableAgents = agents, activeId, previews = {}, titles, showHistory, unreadAgentIds = [], unreadMessageCounts, loading = false, error, onRetry, initialSearch = "", onSelect, onBrowse, onAddChat, historyLoading, historyError, onRetryHistory, onCreateAgent, renderAgentAction, pinnedAgentIds = NO_PINNED_AGENTS, onReorderPins }: AgentConversationSidebarProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState(initialSearch);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -63,7 +67,7 @@ export function AgentConversationSidebar({ agents, compact = false, existingChat
     }} />;
   if (compact) return picker;
   const query = search.trim().toLocaleLowerCase();
-  const matching = agents.filter(agent => `${agent.name} ${agent.title ?? ""} ${agent.role}`.toLocaleLowerCase().includes(query));
+  const matching = agents.filter(agent => `${titles?.[agent.id] ?? ""} ${agent.name} ${agent.title ?? ""} ${agent.role}`.toLocaleLowerCase().includes(query));
   const byId = new Map(matching.map(agent => [agent.id, agent]));
   const pins = pinnedAgentIds.flatMap(id => {
     const agent = byId.get(id);
@@ -85,6 +89,9 @@ export function AgentConversationSidebar({ agents, compact = false, existingChat
           className="h-9 pl-8 pr-8 text-xs md:text-xs" />
         {search && <Button variant="ghost" size="icon-xs" aria-label="Clear search" className="absolute right-1 top-1/2 -translate-y-1/2" onClick={focusSearch}><X className="size-3" /></Button>}
       </div>
+      {showHistory && <Button variant="ghost" size="icon-sm" asChild>
+        <Link to="/chats?history=1" title={t("conversationLifecycle.history")} aria-label={t("conversationLifecycle.history")}><History className="size-4" aria-hidden /></Link>
+      </Button>}
     </div>
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3 scrollbar-auto-hide">
       <span role="status" className="sr-only">{loading ? "Loading agents" : `${visible.length} ${visible.length === 1 ? "agent" : "agents"}`}</span>
@@ -111,8 +118,8 @@ export function AgentConversationSidebar({ agents, compact = false, existingChat
           className={cn("agent-contact-row flex min-w-0 items-center gap-3 rounded-md px-2.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", renderAgentAction && hasUnread && "pr-12", canReorder && "pr-20", activeId === agent.id ? "bg-accent text-accent-foreground" : "group-hover/agent-pin:bg-accent/60 group-focus-within/agent-pin:bg-accent/60")}>
           <AgentAvatar agent={agent} size={40} />
           <span className="agent-pin-text flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-sm font-medium">{agent.name}</span>
-            <span className="truncate text-xs text-muted-foreground">{agent.status === "terminated" ? "Terminated" : agent.title ?? agent.role}</span>
+            <span className="truncate text-sm font-medium">{titles?.[agent.id] ?? agent.name}</span>
+            <span className="truncate text-xs text-muted-foreground">{agent.status === "terminated" ? "Terminated" : titles?.[agent.id] ? agent.name : agent.title ?? agent.role}</span>
           </span>
           {unreadCount > 0 ? <Badge variant="ghost" aria-label={`${unreadCount} unread ${unreadCount === 1 ? "message" : "messages"} from ${agent.name}`} className="shrink-0 bg-primary font-mono tabular-nums text-primary-foreground">{unreadCount}</Badge>
             : unreadIds.has(agent.id) && <span role="img" aria-label={`Unread messages from ${agent.name}`} className="size-2 shrink-0 rounded-full bg-primary" />}

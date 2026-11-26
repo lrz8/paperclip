@@ -46,6 +46,8 @@ import { notifyChatPublicationWork } from "./chat-work-notifications.js";
 import { notifyTerminalWorkspaceWork } from "./terminal-workspace-work.js";
 import { requestRestorePointDeletion } from "./git-restore-point-ledger.js";
 import { requestIssueConnectionContentDeletion } from "./tool-access/connections/issue-content-deletion.js";
+import { requestIssueAttachmentObjectDeletion } from "./tool-access/connections/stored-object-deletion.js";
+import { assertDeletionOwner, readIssueDeletionImpact, taskArchiveCondition } from "./issue-lifecycle.js";
 import { DELIVERY_QUEUES, notifyDeliveryWork } from "./delivery-work-notifications.js";
 import { recordChatHandoff, recordAcceptedChatHandoff, lockAcceptedChatHandoffSource, recordChatCompletion, existingChatCompletionReply, acknowledgeChatCompletionReply } from "./chat-completion-delivery.js";
 import { mirrorSlackBoardComment, slackBoardReplyBindings } from "./slack-board-messages.js";
@@ -150,6 +152,7 @@ import {
 import type {
   AcceptedPlanDecomposition,
   IssueComment,
+  IssueTaskArchiveFilter,
   IssueCommentAuthorType,
   IssueCommentDerivedAuthorSource,
   IssueCommentMetadata,
@@ -273,6 +276,7 @@ import {
   persistActivity,
   publishActivity,
   type ActivityPublication,
+  type LogActivityInput,
 } from "./activity-log.js";
 import { buildIssueChanges } from "./issue-change-receipt.js";
 import { ensurePersonalPrivateProject } from "./projects.js";
@@ -1916,6 +1920,7 @@ export interface IssueFilters {
   touchedCandidates?: "participation";
   inboxArchivedByUserId?: string;
   inboxArchive?: { userId: string; mode: IssueInboxArchiveFilter };
+  taskArchive?: IssueTaskArchiveFilter;
   unreadForUserId?: string;
   /** Read projection only; never filters the result set by participation. */
   readStateForUserId?: string;
@@ -5313,6 +5318,7 @@ const issueListSelect = {
   privacyParentIssueId: issues.privacyParentIssueId,
   title: issues.title,
   titleNeedsGeneration: issues.titleNeedsGeneration,
+  taskArchivedAt: issues.taskArchivedAt,
   description: sql<string | null>`
     CASE
       WHEN ${issues.description} IS NULL THEN NULL
@@ -8588,6 +8594,7 @@ export function issueService(db: Db) {
       const conditions = [
         eq(issues.companyId, companyId),
         visibleIssueCondition(),
+        taskArchiveCondition(filters?.taskArchive),
       ];
       if (filters?.issueIds) {
         if (filters.issueIds.length === 0) return [];
@@ -9001,7 +9008,7 @@ export function issueService(db: Db) {
         return countBlockedInboxIssues(db, companyId, filters);
       }
 
-      const conditions = [eq(issues.companyId, companyId), visibleIssueCondition()];
+      const conditions = [eq(issues.companyId, companyId), visibleIssueCondition(), taskArchiveCondition(filters?.taskArchive)];
       if (filters?.readCondition) conditions.push(filters.readCondition);
       const creationCondition = creationVisibilityCondition(companyId, filters);
       if (creationCondition) conditions.push(creationCondition);
@@ -10657,11 +10664,6 @@ export function issueService(db: Db) {
       if (data.assigneeAgentId && data.assigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (data.assigneeAgentId) {
-        await assertAssignableAgent(db, companyId, data.assigneeAgentId, {
-          kind: "work",
-        });
-      }
       if (data.assigneeUserId) {
         await assertAssignableUser(companyId, data.assigneeUserId);
       }
@@ -10674,6 +10676,7 @@ export function issueService(db: Db) {
       }
       const persist = async (tx: DbTransaction) => {
         await tx.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId)).for("no key update");
+        if (data.assigneeAgentId) await assertAssignableAgent(tx, companyId, data.assigneeAgentId, { kind: "work" });
         if (generateConversationTitle) {
           if (!issueData.conversationAgentId || !issueData.conversationUserId) throw unprocessable("Generated chat titles require a conversation");
           const [conversationAgent] = await tx.select({ name: agents.name }).from(agents).where(and(
@@ -12049,6 +12052,14 @@ export function issueService(db: Db) {
           .for("update")
           .then((rows: Array<typeof issues.$inferSelect>) => rows[0] ?? null);
         if (!receiptExisting) return null;
+        if (receiptExisting.taskArchivedAt && (
+          (patch.status !== undefined && patch.status !== receiptExisting.status)
+          || (patch.assigneeAgentId !== undefined && patch.assigneeAgentId !== receiptExisting.assigneeAgentId)
+          || (patch.assigneeUserId !== undefined && patch.assigneeUserId !== receiptExisting.assigneeUserId)
+          || patch.monitorNextCheckAt != null
+        )) {
+          throw conflict("Restore the archived task before changing its status, assignment, or schedule.", { code: "task_archived" });
+        }
         if (Object.keys(issueData).length || nextLabelIds !== undefined || blockedByIssueIds !== undefined) await assertAgentInteraction(tx as unknown as Db, {
           companyId: receiptExisting.companyId, actorAgentId, operation: "edit", issueId: id,
           texts: [
@@ -12748,11 +12759,25 @@ export function issueService(db: Db) {
       return cleared;
     },
 
-    remove: (id: string, actorAgentId?: string | null) =>
-      db.transaction(async (tx) => {
-        const [task] = await tx.select({ companyId: issues.companyId, parentId: issues.parentId,
-          executionWorkspaceId: issues.executionWorkspaceId }).from(issues).where(eq(issues.id, id)).for("update");
-        if (task) await assertAgentInteraction(tx, { companyId: task.companyId, actorAgentId,
+    remove: async (
+      id: string, actorAgentId?: string | null,
+      deletion?: { companyId: string; actor: Pick<LogActivityInput, "actorType" | "actorId" | "agentId" | "runId" | "agentApiKeyId"> },
+    ) => {
+      const publications: ActivityPublication[] = [];
+      const result = await db.transaction(async (tx) => {
+        const predicate = deletion
+          ? and(eq(issues.id, id), eq(issues.companyId, deletion.companyId))
+          : eq(issues.id, id);
+        const [task] = await tx.select().from(issues).where(predicate).for("update");
+        if (!task) return null;
+        if (deletion) {
+          assertDeletionOwner(task, deletion.actor.actorId);
+          const impact = await readIssueDeletionImpact(tx as unknown as Db, task);
+          if (impact.blockers.length) {
+            throw conflict("The task cannot be permanently deleted.", { code: "task_deletion_blocked", ...impact });
+          }
+        }
+        await assertAgentInteraction(tx, { companyId: task.companyId, actorAgentId,
           operation: "edit", issueId: id, lock: true });
         const attachmentAssetIds = await tx
           .select({ assetId: issueAttachments.assetId })
@@ -12768,7 +12793,7 @@ export function issueService(db: Db) {
           await notifyTerminalWorkspaceWork(tx, `issue:${id}`);
           if (task?.parentId) await notifyTerminalWorkspaceWork(tx, `issue:${task.parentId}`);
           if (task?.executionWorkspaceId) await notifyTerminalWorkspaceWork(tx, `workspace:${task.executionWorkspaceId}`);
-          await requestRestorePointDeletion(tx, { sourceIssueId: id });
+          if (!deletion) await requestRestorePointDeletion(tx, { sourceIssueId: id });
           const [owner] = await tx.select({ companyId: issues.companyId }).from(issues).where(eq(issues.id, id));
           if (owner) {
             await notifyIssueAttentionRetentionWork(tx, { companyId: owner.companyId, issueId: id });
@@ -12794,12 +12819,14 @@ export function issueService(db: Db) {
           }
           await notifyDeliveryWork(tx, DELIVERY_QUEUES.agentTimers);
           await notifyRoutineExecutionStatus(tx, id);
-          if (owner) {
+          if (deletion) {
+            await requestIssueAttachmentObjectDeletion(tx as unknown as Db, { companyId: task.companyId, issueId: id });
+          } else if (owner) {
             await requestIssueConnectionContentDeletion(tx as unknown as Db, { companyId: owner.companyId, issueId: id, actorAgentId });
           }
           removedIssue = await tx
             .delete(issues)
-            .where(eq(issues.id, id))
+            .where(predicate)
             .returning()
             .then((rows) => rows[0] ?? null);
         } catch (err) {
@@ -12834,9 +12861,23 @@ export function issueService(db: Db) {
         }
 
         if (!removedIssue) return null;
+        if (deletion) {
+          const entry = { ...deletion.actor, companyId: task.companyId, entityType: "issue" };
+          await logActivity(tx as unknown as Db, {
+            ...entry, action: "issue.deleted", entityId: id, details: { parentId: task.parentId },
+          }, publications);
+          // Subscribers who can read only the parent receive its refresh
+          // without any deleted-child identity or content.
+          if (task.parentId) await logActivity(tx as unknown as Db, {
+            ...entry, action: "issue.child_deleted", entityId: task.parentId,
+          }, publications);
+        }
         const [enriched] = await withIssueLabels(tx, [removedIssue]);
         return enriched;
-      }),
+      });
+      for (const publication of publications) publishActivity(publication);
+      return result;
+    },
 
     checkout: async (
       id: string,
@@ -12846,11 +12887,12 @@ export function issueService(db: Db) {
       options: { blockedState?: { lastStatusDecisionId: string; statusVersion: number } } = {},
     ) => {
       const issueCompany = await db
-        .select({ companyId: issues.companyId })
+        .select({ companyId: issues.companyId, taskArchivedAt: issues.taskArchivedAt })
         .from(issues)
         .where(eq(issues.id, id))
         .then((rows) => rows[0] ?? null);
       if (!issueCompany) throw notFound("Issue not found");
+      if (issueCompany.taskArchivedAt) throw conflict("Restore the archived task before checkout.", { code: "task_archived" });
       await assertAssignableAgent(db, issueCompany.companyId, agentId, {
         kind: "work",
       });
@@ -12954,6 +12996,7 @@ export function issueService(db: Db) {
           .where(
             and(
               eq(issues.id, id),
+              isNull(issues.taskArchivedAt),
               inArray(issues.status, expectedStatuses),
               options.blockedState ? or(
                 ne(issues.status, "blocked"),
@@ -13093,6 +13136,7 @@ export function issueService(db: Db) {
                 and(
                   eq(issues.id, id),
                   inArray(issues.status, expectedStatuses),
+                  isNull(issues.taskArchivedAt),
                   eq(issues.executionRunId, staleExecutionRunId),
                   or(
                     isNull(issues.assigneeAgentId),
@@ -13746,15 +13790,16 @@ export function issueService(db: Db) {
       // The query below locks human comments on caller-owned transactions too,
       // sharing the fence with both question creation and Slack settlement.
       const issueQuery = dbOrTx
-        .select({ companyId: issues.companyId, conversationAgentId: issues.conversationAgentId })
+        .select({ companyId: issues.companyId, conversationAgentId: issues.conversationAgentId, hiddenAt: issues.hiddenAt, taskArchivedAt: issues.taskArchivedAt })
         .from(issues)
         .where(eq(issues.id, issueId));
       // Caller-owned transactions (including chat and review comments) must
       // serialize with question creation before inserting the human comment.
       const issue = await (actor.userId || (actor.runId && dbOrTx !== db) ? issueQuery.for("update") : issueQuery)
-        .then((rows: Array<{ companyId: string; conversationAgentId: string | null }>) => rows[0] ?? null);
+        .then((rows: Array<{ companyId: string; conversationAgentId: string | null; hiddenAt: Date | null; taskArchivedAt: Date | null }>) => rows[0] ?? null);
 
       if (!issue) throw notFound("Issue not found");
+      if (issue.taskArchivedAt) throw conflict("Restore the archived task before commenting.", { code: "task_archived" });
 
       await assertAgentInteraction(dbOrTx, {
         companyId: issue.companyId, actorAgentId: actor.agentId, operation: "comment",
@@ -13785,6 +13830,9 @@ export function issueService(db: Db) {
           if (existing.body !== redactedBody) throw conflict("Message request ID was already used for different content");
           return existing;
         }
+      }
+      if (issue.conversationAgentId && issue.hiddenAt) {
+        throw conflict("Restore the conversation before adding a message", { code: "conversation_archived" });
       }
       if (options?.metadata?.chatMessage && !options.proactiveChatMessage) {
         throw forbidden("Chat message provenance is server-owned");
@@ -14402,16 +14450,17 @@ export function issueService(db: Db) {
       createdByRunId?: string | null;
     }) => {
       const issue = await db
-        .select({ id: issues.id, companyId: issues.companyId, createdByUserId: issues.createdByUserId, responsibleUserId: issues.responsibleUserId })
+        .select({ id: issues.id, companyId: issues.companyId, createdByUserId: issues.createdByUserId,
+          responsibleUserId: issues.responsibleUserId, conversationAgentId: issues.conversationAgentId })
         .from(issues)
         .where(eq(issues.id, input.issueId))
         .then((rows) => rows[0] ?? null);
       if (!issue) throw notFound("Issue not found");
 
       return db.transaction(async (tx) => {
-        if (input.createdByAgentId && input.issueCommentId) {
+        if (issue.conversationAgentId || (input.createdByAgentId && input.issueCommentId)) {
           const [lockedIssue] = await tx
-            .select({ id: issues.id })
+            .select({ hiddenAt: issues.hiddenAt })
             .from(issues)
             .where(
               and(
@@ -14421,6 +14470,9 @@ export function issueService(db: Db) {
             )
             .for("update");
           if (!lockedIssue) throw notFound("Issue not found");
+          if (issue.conversationAgentId && lockedIssue.hiddenAt) {
+            throw conflict("Restore the conversation before uploading attachments", { code: "conversation_archived" });
+          }
         }
         await assertAgentInteraction(tx as unknown as Db, {
           companyId: issue.companyId, actorAgentId: input.createdByAgentId,

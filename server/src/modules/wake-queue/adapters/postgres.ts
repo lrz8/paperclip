@@ -1288,6 +1288,8 @@ export function createIssueWakePreflightReader(db: Db) {
       conversationAgentId: issues.conversationAgentId,
       conversationUserId: issues.conversationUserId,
       conversationState: issues.conversationState,
+      hiddenAt: issues.hiddenAt,
+      taskArchivedAt: issues.taskArchivedAt,
       status: issues.status,
       originKind: issues.originKind,
     }).from(issues).where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)));
@@ -1303,6 +1305,8 @@ const issueAdmissionFields = {
   conversationAgentId: issues.conversationAgentId,
   conversationUserId: issues.conversationUserId,
   conversationState: issues.conversationState,
+  hiddenAt: issues.hiddenAt,
+  taskArchivedAt: issues.taskArchivedAt,
   status: issues.status,
   statusVersion: issues.statusVersion,
   projectId: issues.projectId,

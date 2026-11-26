@@ -104,6 +104,7 @@ export interface Agent {
   lifecycleState?: AgentLifecycleState;
   lifecycleVersion?: number;
   lifecycleError?: string | null;
+  archived?: boolean;
   reportsTo: string | null;
   capabilities: string | null;
   adapterType: AgentAdapterType;
@@ -129,6 +130,20 @@ export interface Agent {
 export interface AgentDetail extends Agent {
   chainOfCommand: AgentChainOfCommandEntry[];
   access: AgentAccessState;
+}
+
+export interface AgentDeleteImpact {
+  allowed: boolean;
+  blockedCode: string | null;
+  blockedReason: string | null;
+  counts: {
+    tasks: number;
+    reports: number;
+    runs: number;
+    sessions: number;
+    approvals: number;
+    auditEvents: number;
+  };
 }
 
 export type ClearAgentErrorResponse = Agent;

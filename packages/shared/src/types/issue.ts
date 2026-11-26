@@ -1039,6 +1039,8 @@ export interface Issue {
   isUnreadForMe?: boolean;
   unreadMessageCount?: number;
   isArchivedForMe?: boolean;
+  /** Organization-wide archive timestamp for a completed or cancelled task. */
+  taskArchivedAt?: Date | null;
   archivedAt?: Date | null;
   archivedByActorType?: "user" | "agent" | null;
   archivedByAgentId?: string | null;
@@ -1048,6 +1050,15 @@ export interface Issue {
 }
 
 export type IssueInboxArchiveFilter = "include" | "archived";
+export type IssueTaskArchiveFilter = "active" | "archived" | "all";
+
+export interface IssueDeletionImpact {
+  blockers: Array<"archive_required" | "active_work" | "children" | "approval" | "schedule" | "workspace" | "decision">;
+  comments: number;
+  documents: number;
+  attachments: number;
+  attachmentBytes: number;
+}
 
 export type CompactIssue = Pick<
   Issue,
@@ -1087,6 +1098,7 @@ export type CompactIssue = Pick<
   | "startedAt"
   | "completedAt"
   | "cancelledAt"
+  | "taskArchivedAt"
   | "createdAt"
   | "updatedAt"
 > & {

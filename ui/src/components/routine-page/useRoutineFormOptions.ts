@@ -76,7 +76,7 @@ export function useRoutineFormOptions(
 
   const allAgents = agentsQuery.data;
   const agents = useMemo(
-    () => (allAgents ?? []).filter((agent) => agent.status !== "terminated"),
+    () => (allAgents ?? []).filter((agent) => !agent.archived && agent.status !== "terminated"),
     [allAgents],
   );
   const allProjects = projectsQuery.data;

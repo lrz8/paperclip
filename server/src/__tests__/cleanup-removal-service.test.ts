@@ -15,6 +15,7 @@ import {
   toolConnections,
   activityLog,
   agents,
+  approvals,
   companies,
   companySkills,
   createDb,
@@ -64,6 +65,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await db.delete(toolConnections);
     await db.delete(toolApplications);
     await db.delete(heartbeatRunEvents);
+    await db.delete(approvals);
     await db.delete(activityLog);
     await db.delete(issueReadStates);
     await db.delete(issueComments);
@@ -131,7 +133,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     return { agentId, companyId, issueId, runId };
   }
 
-  it("removes agent-owned issue comments and run-linked activity before deleting the agent", async () => {
+  it("detaches agent-owned comments, approvals and activity while preserving their history", async () => {
     const { agentId, companyId, issueId, runId } = await seedFixture();
 
     await db.insert(issueComments).values({
@@ -165,6 +167,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
       body: "Looks good",
       createdByRunId: runId,
     });
+    await db.insert(approvals).values({ companyId, requestedByAgentId: agentId, type: "hire_agent", status: "approved", payload: {} });
 
     await db.update(agents).set({ status: "terminated", lifecycleState: "terminated" }).where(eq(agents.id, agentId));
     const removed = await agentService(db).remove(agentId);
@@ -172,8 +175,10 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     expect(removed?.id).toBe(agentId);
     await expect(db.select().from(agents).where(eq(agents.id, agentId))).resolves.toHaveLength(0);
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(0);
-    await expect(db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).resolves.toHaveLength(0);
-    await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).resolves.toMatchObject([{ authorAgentId: null, body: "Agent-authored comment" }]);
+    await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toMatchObject([{ actorId: agentId, runId: null, action: "heartbeat.completed" }]);
+    await expect(db.select().from(approvals).where(eq(approvals.companyId, companyId))).resolves.toMatchObject([{ requestedByAgentId: null, status: "approved" }]);
+    await expect(db.select().from(issueExecutionDecisions).where(eq(issueExecutionDecisions.issueId, issueId))).resolves.toMatchObject([{ actorAgentId: null, outcome: "approved" }]);
   });
 
   it("removes issue read states and activity rows before deleting the company", async () => {
