@@ -262,13 +262,13 @@ export function issueUrl(issue: { id: string; identifier?: string | null }): str
   return `/issues/${issue.identifier ?? issue.id}`;
 }
 
-/** Build an agent route URL using the short URL key when available. */
-export function agentRouteRef(agent: { id: string; urlKey?: string | null; name?: string | null }): string {
+/** Shortnames resolve only for non-terminated agents and can be reused. */
+export function agentRouteRef(agent: { id: string; urlKey?: string | null; name?: string | null; status?: string }): string {
+  if (agent.status === "terminated") return agent.id;
   return agent.urlKey ?? deriveAgentUrlKey(agent.name, agent.id);
 }
 
-/** Build an agent URL using the short URL key when available. */
-export function agentUrl(agent: { id: string; urlKey?: string | null; name?: string | null }): string {
+export function agentUrl(agent: Parameters<typeof agentRouteRef>[0]): string {
   return `/agents/${agentRouteRef(agent)}`;
 }
 
