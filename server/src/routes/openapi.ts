@@ -3664,8 +3664,11 @@ registry.registerPath({
   path: "/api/companies/{companyId}/agents",
   tags: ["agents"],
   summary: "List agents in a company",
-  request: { params: z.object({ companyId: z.string() }) },
-  responses: { 200: r.ok(), 401: r.unauthorized },
+  request: {
+    params: z.object({ companyId: z.string() }),
+    query: z.object({ includeTerminated: z.literal("true").optional().describe("Board only. Include terminated agents for lifecycle management.") }),
+  },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
 });
 
 registry.registerPath({
@@ -4314,6 +4317,18 @@ registry.registerPath({
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
+for (const [method, action, summary] of [
+  ["post", "archive", "Archive an agent and stop its work"],
+  ["post", "unarchive", "Restore an archived agent"],
+  ["get", "delete-impact", "Preview the consequences and blockers of permanently deleting an agent"],
+] as const) {
+  registry.registerPath({
+    method, path: `/api/agents/{id}/${action}`, tags: ["agents"], summary,
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict },
+  });
+}
+
 registry.registerPath({
   method: "get",
   path: "/api/instance/scheduler-heartbeats",
@@ -4529,6 +4544,7 @@ registry.registerPath({
     params: z.object({ companyId: z.string() }),
     query: z.object({
       view: z.enum(["compact", "index", "rows"]).optional(),
+      taskArchive: z.enum(["active", "archived", "all"]).optional().describe("Organization archive state. Defaults to active tasks."),
       ids: z.string().optional().describe("One to 100 comma-separated task UUIDs; requires index or rows without attention."),
       parentIds: z.string().optional().describe("One to 100 comma-separated parent UUIDs; requires index or rows without attention."),
       oneChildPerParent: z.boolean().optional().describe("Return at most one readable child per parent; requires view=index and parentIds."),
@@ -4666,10 +4682,23 @@ registry.registerPath({
   method: "delete",
   path: "/api/issues/{id}",
   tags: ["issues"],
-  summary: "Delete an issue",
-  request: { params: z.object({ id: z.string() }) },
-  responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
+  summary: "Permanently delete an archived task or conversation",
+  description: "Board only. Requires the canonical task UUID as confirmation. Conversation deletion also requires its owner. Check deletion impact for linked records before deleting.",
+  request: { params: z.object({ id: z.string() }), query: z.object({ confirm: z.string().uuid() }) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict },
 });
+
+for (const [method, path, summary] of [
+  ["post", "task-archive", "Archive a completed or cancelled task"],
+  ["delete", "task-archive", "Restore a task from its organization archive"],
+  ["get", "deletion-impact", "Preview data and blockers associated with deleting a task or conversation"],
+] as const) {
+  registry.registerPath({
+    method, path: `/api/issues/{id}/${path}`, tags: ["issues"], summary,
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict },
+  });
+}
 
 registry.registerPath({
   method: "get",

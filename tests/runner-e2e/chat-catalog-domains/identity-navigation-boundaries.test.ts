@@ -48,13 +48,19 @@ it("actual broken-link setup exposes only the supplied URL and factual distinct-
     page: { context: () => ({ browser: () => null }) }, api: { baseURL: "http://fixture.invalid",
       async post(path: string, body?: Record<string, unknown>) { writes.push({ path, body }); const row = path.endsWith("/projects") ? { id: `project-${++projectId}` } : path.endsWith("/issues") ? { ...body, id: `task-${++taskId}`, identifier: `ACO-${taskId}` } : {}; if ("id" in row) saved.set(String(row.id), row); return row; },
       async get(path: string) { return saved.get(path.split("/").at(-1)!); },
-      async patch(path: string, body: Record<string, unknown>) { writes.push({ path, body }); return body; }, async delete(path: string) { deleted.push(path); } } },
+      async patch(path: string, body: Record<string, unknown>) { writes.push({ path, body }); return body; },
+      async delete(path: string) {
+        expect(writes.at(-1)?.path).toBe("/api/issues/task-1/task-archive");
+        deleted.push(path);
+      } } },
     refreshIssue: async () => {}, issue: () => source } as unknown as ChatCatalogContext;
   await expect(navigationBoundaryIdentityCases[0]!.setup(ctx)).rejects.toThrow("independent real-user setup");
   expect(writes.find(x => x.path === "/api/issues/standing-chat")?.body?.description).toBe("The person supplied this old task link: http://fixture.invalid/ACO/issues/ACO-1?tab=activity");
   const tasks = writes.filter(x => x.path.endsWith("/issues")); expect(tasks[0]?.body?.projectId).not.toBe(tasks[1]?.body?.projectId);
   expect(tasks[1]?.body?.title).toBe("Launch website draft revision");
-  expect(tasks[1]?.body?.description).toBe("Current draft for the Archived launch context project."); expect(deleted).toEqual(["/api/issues/task-1"]);
+  expect(tasks[0]?.body?.status).toBe("done");
+  expect(tasks[1]?.body?.description).toBe("Current draft for the Archived launch context project.");
+  expect(deleted).toEqual(["/api/issues/task-1?confirm=task-1"]);
 });
 
 it("rejects public title-dedup alias and wrong-project readbacks before deleting the old task", () => {

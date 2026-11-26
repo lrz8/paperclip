@@ -4,7 +4,7 @@ import type { StatusCard, StatusCardUpdate, StatusCardSummaryRevision } from "..
 import type { ChatCatalogCase, ChatCatalogContext } from "../chat-catalog-contract.js";
 import { expect } from "@playwright/test";
 import { pollUntil } from "../api.js";
-import { checks, observation, project, task, sameTask, hasLink, type Entity, type InternalObservation } from "./internal-support.js";
+import { checks, observation, permanentlyDeleteTaskFixture, project, task, sameTask, hasLink, type Entity, type InternalObservation } from "./internal-support.js";
 import { prepareCardChecklist, updateCardChecklistSource, observeCardChecklistSuccess, observeCardWork, failCardChecklist, genuineCardWorkFailure, genuineCardChecklistSuccess, cardAccountingReady, cleanupCardChecklist, type CardRecipe, type CardWorkEvidence } from "./status-card-work-failure.js";
 import { readAgentResource, cleanupIdentityProbes, remainingIdentityObservationBudget } from "./identity-support.js";
 import { fixtureWorker } from "./internal-definition.js";
@@ -369,7 +369,7 @@ export const integratorStatusCardsCases: readonly ChatCatalogCase[] = [
       state.accessCheckpoint = { ...first, state: structuredClone(state) }; await ctx.input.evidence("chat-card-explanation-before-access-loss.json", state.accessCheckpoint);
       const source = (state.sourceTasks as Entity[])[0]!;
       await inspectResult(ctx, `/${ctx.input.fixtures.company.issuePrefix}/issues/${source.identifier ?? source.id}`, source.title!, resultHref(first, source.identifier ?? source.id, "issues") ?? resultHref(first, source.id, "issues"));
-      await ctx.input.api.delete(`/api/issues/${source.id}`);
+      await permanentlyDeleteTaskFixture(ctx, source.id, { cancel: true });
       const denial = await readAgentResource(ctx, `/api/issues/${source.id}`); state.sourceReadStatus = denial.status; state.accessPrincipalId = ctx.input.fixtures.agent.id; state.sourceUnavailable = true;
       const answered = first.cards.find(row => row.id === cardId)!; const answeredSummaries = first.summaries[cardId];
       const retained = await ctx.input.api.get<StatusCard>(`/api/status-cards/${cardId}`);

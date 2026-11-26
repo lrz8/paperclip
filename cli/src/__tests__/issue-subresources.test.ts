@@ -58,7 +58,38 @@ describe("issue subresource commands", () => {
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
       ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}`],
       ["PATCH", `http://localhost:3100/api/issues/${ISSUE_ID}`],
-      ["DELETE", `http://localhost:3100/api/issues/${ISSUE_ID}`],
+      ["DELETE", `http://localhost:3100/api/issues/${ISSUE_ID}?confirm=${ISSUE_ID}`],
+    ]);
+  });
+
+  it("resolves an issue identifier to the UUID required for permanent deletion", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ id: ISSUE_ID }))
+      .mockResolvedValueOnce(jsonResponse({ id: ISSUE_ID }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await run(["issue", "delete", "RUN-17", "--yes"]);
+
+    expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
+      ["GET", "http://localhost:3100/api/issues/RUN-17"],
+      ["DELETE", `http://localhost:3100/api/issues/${ISSUE_ID}?confirm=${ISSUE_ID}`],
+    ]);
+  });
+
+  it("previews deletion and uses the organization archive without changing the personal inbox", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse([])));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await run(["issue", "list", "-C", COMPANY_ID, "--task-archive", "archived"]);
+    await run(["issue", "task-archive", ISSUE_ID]);
+    await run(["issue", "task-restore", ISSUE_ID]);
+    await run(["issue", "deletion-impact", ISSUE_ID]);
+
+    expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
+      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/issues?taskArchive=archived`],
+      ["POST", `http://localhost:3100/api/issues/${ISSUE_ID}/task-archive`],
+      ["DELETE", `http://localhost:3100/api/issues/${ISSUE_ID}/task-archive`],
+      ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}/deletion-impact`],
     ]);
   });
 

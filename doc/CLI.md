@@ -462,7 +462,11 @@ npx paperclipai issue list --company-id <company-id> [--status todo,in_progress]
 npx paperclipai issue get <issue-id-or-identifier>
 npx paperclipai issue create --company-id <company-id> --title "..." [--description "..."] [--status todo] [--priority high] [--parent-id <issue-id> | --standalone]
 npx paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]
-npx paperclipai issue delete <issue-id> --yes
+npx paperclipai issue list --company-id <company-id> --task-archive archived
+npx paperclipai issue task-archive <issue-id-or-identifier>
+npx paperclipai issue task-restore <issue-id-or-identifier>
+npx paperclipai issue deletion-impact <issue-id-or-identifier>
+npx paperclipai issue delete <issue-id-or-identifier> --yes
 npx paperclipai issue comment <issue-id> --body "..." [--attachment-id <id...>] [--reopen]
 npx paperclipai issue comments <issue-id> [--limit 50]
 npx paperclipai issue comment:get <issue-id> <comment-id>
@@ -492,6 +496,12 @@ npx paperclipai issue unarchive <issue-id>
 npx paperclipai issue recovery-actions <issue-id>
 npx paperclipai issue recovery:resolve <issue-id> --outcome restored --source-issue-status todo
 ```
+
+`task-archive` and `task-restore` manage the organization archive. The
+`archive` and `unarchive` commands manage your personal inbox. Use board
+authentication for organization archive changes, deletion previews, and
+permanent deletion. Review `deletion-impact` before running `delete --yes`.
+Paperclip checks that the task is archived and has no deletion blockers.
 
 ```sh
 npx paperclipai issue documents <issue-id> [--include-system]

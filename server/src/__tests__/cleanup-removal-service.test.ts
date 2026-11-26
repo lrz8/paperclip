@@ -181,6 +181,28 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await expect(db.select().from(issueExecutionDecisions).where(eq(issueExecutionDecisions.issueId, issueId))).resolves.toMatchObject([{ actorAgentId: null, outcome: "approved" }]);
   });
 
+  it("clears only the deleted agent's task assignment and creation links", async () => {
+    const { agentId, companyId, issueId } = await seedFixture();
+    const [remaining] = await db.insert(agents).values({ companyId, name: "Remaining agent" }).returning();
+    await db.update(issues).set({ createdByAgentId: remaining.id, createdByUserId: null }).where(eq(issues.id, issueId));
+    const [created] = await db.insert(issues).values({
+      companyId,
+      title: "Keep the surviving assignee",
+      status: "todo",
+      createdByAgentId: agentId,
+      assigneeAgentId: remaining.id,
+    }).returning();
+
+    await db.update(agents).set({ status: "terminated", lifecycleState: "terminated" }).where(eq(agents.id, agentId));
+    expect((await agentService(db).remove(agentId))?.id).toBe(agentId);
+    await expect(db.select().from(issues).where(eq(issues.id, issueId))).resolves.toMatchObject([
+      { assigneeAgentId: null, createdByAgentId: remaining.id },
+    ]);
+    await expect(db.select().from(issues).where(eq(issues.id, created.id))).resolves.toMatchObject([
+      { assigneeAgentId: remaining.id, createdByAgentId: null },
+    ]);
+  });
+
   it("removes issue read states and activity rows before deleting the company", async () => {
     const { companyId, issueId, runId } = await seedFixture();
     const documentId = randomUUID();

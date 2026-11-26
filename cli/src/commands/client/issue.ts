@@ -11,6 +11,7 @@ import {
   createIssueThreadInteractionSchema,
   createIssueTreeHoldSchema,
   createIssueWorkProductSchema,
+  isUuidLike,
   type FeedbackTrace,
   type HeartbeatRun,
   linkIssueApprovalSchema,
@@ -24,6 +25,8 @@ import {
   updateIssueWorkProductSchema,
   type Issue,
   type IssueComment,
+  type IssueDeletionImpact,
+  type IssueTaskArchiveFilter,
   upsertIssueDocumentSchema,
   upsertIssueFeedbackVoteSchema,
 } from "@paperclipai/shared";
@@ -48,6 +51,7 @@ interface IssueBaseOptions extends BaseClientOptions {
   assigneeAgentId?: string;
   projectId?: string;
   match?: string;
+  taskArchive?: IssueTaskArchiveFilter;
 }
 
 interface IssueCreateOptions extends BaseClientOptions {
@@ -180,6 +184,7 @@ export function registerIssueCommands(program: Command): void {
       .option("--status <csv>", "Comma-separated statuses")
       .option("--assignee-agent-id <id>", "Filter by assignee agent ID")
       .option("--project-id <id>", "Filter by project ID")
+      .option("--task-archive <mode>", "Organization archive filter: active, archived, or all")
       .option("--match <text>", "Local text match on identifier/title/description")
       .action(async (opts: IssueBaseOptions) => {
         try {
@@ -188,6 +193,7 @@ export function registerIssueCommands(program: Command): void {
           if (opts.status) params.set("status", opts.status);
           if (opts.assigneeAgentId) params.set("assigneeAgentId", opts.assigneeAgentId);
           if (opts.projectId) params.set("projectId", opts.projectId);
+          if (opts.taskArchive) params.set("taskArchive", opts.taskArchive);
 
           const query = params.toString();
           const path = `${apiPath`/api/companies/${ctx.companyId}/issues`}${query ? `?${query}` : ""}`;
@@ -242,15 +248,36 @@ export function registerIssueCommands(program: Command): void {
 
   addCommonClientOptions(
     issue
+      .command("deletion-impact")
+      .description("Preview what permanent task deletion would remove")
+      .argument("<idOrIdentifier>", "Issue UUID or identifier")
+      .action(async (idOrIdentifier: string, opts: BaseClientOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const impact = await ctx.api.get<IssueDeletionImpact>(apiPath`/api/issues/${idOrIdentifier}/deletion-impact`);
+          printOutput(impact, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
       .command("delete")
-      .description("Delete an issue")
-      .argument("<issueId>", "Issue ID")
-      .option("--yes", "Confirm deletion")
-      .action(async (issueId: string, opts: IssueDeleteOptions) => {
+      .description("Permanently delete an archived issue")
+      .argument("<idOrIdentifier>", "Issue UUID or identifier")
+      .option("--yes", "Confirm permanent deletion")
+      .action(async (idOrIdentifier: string, opts: IssueDeleteOptions) => {
         try {
           if (!opts.yes) throw new Error("Refusing to delete without --yes");
           const ctx = resolveCommandContext(opts);
-          const deleted = await ctx.api.delete<Issue>(apiPath`/api/issues/${issueId}`);
+          const ref = idOrIdentifier.trim();
+          const issueId = isUuidLike(ref)
+            ? ref.toLowerCase()
+            : (await ctx.api.get<Issue>(apiPath`/api/issues/${ref}`))?.id;
+          if (!issueId || !isUuidLike(issueId)) throw new Error("The task UUID could not be resolved");
+          const deleted = await ctx.api.delete<Issue>(apiPath`/api/issues/${issueId}?confirm=${issueId}`);
           printOutput(deleted, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
@@ -508,6 +535,8 @@ export function registerIssueCommands(program: Command): void {
   addIssuePostDeleteMarkerCommand(issue, "unread", "Mark an issue as unread", "delete", "/read");
   addIssuePostDeleteMarkerCommand(issue, "archive", "Archive an issue from the inbox", "post", "/inbox-archive");
   addIssuePostDeleteMarkerCommand(issue, "unarchive", "Unarchive an issue from the inbox", "delete", "/inbox-archive");
+  addIssuePostDeleteMarkerCommand(issue, "task-archive", "Archive a completed or cancelled task for the organization", "post", "/task-archive");
+  addIssuePostDeleteMarkerCommand(issue, "task-restore", "Restore a task from the organization archive", "delete", "/task-archive");
 
   addCommonClientOptions(
     issue

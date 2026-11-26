@@ -7469,8 +7469,8 @@ export function agentRoutes(
     ));
   });
 
-  for (const action of ["archive", "restore", "purge-log"] as const) {
-    router.post(`/heartbeat-runs/:runId/${action}`, async (req, res) => {
+  function mutateRunHistory(action: "archive" | "restore" | "purge-log") {
+    return async (req: Request, res: Response) => {
       assertBoard(req);
       const runId = readHeartbeatRunId(req);
       const run = await getAccessibleResource(req, res, heartbeat.getRunReadAccess(runId), "Heartbeat run not found");
@@ -7478,8 +7478,11 @@ export function agentRoutes(
       if (!(await assertRunReadAllowed(req, res, run))) return;
       if (action === "purge-log" && req.body?.confirm !== runId) throw badRequest("Confirm the run ID to permanently remove its log");
       res.json(await changeRunLifecycle(db, { companyId: run.companyId, runId, userId: getActorInfo(req).actorId, action }));
-    });
+    };
   }
+  router.post("/heartbeat-runs/:runId/archive", mutateRunHistory("archive"));
+  router.post("/heartbeat-runs/:runId/restore", mutateRunHistory("restore"));
+  router.post("/heartbeat-runs/:runId/purge-log", mutateRunHistory("purge-log"));
 
   router.post("/heartbeat-runs/:runId/cancel", async (req, res) => {
     assertBoard(req);

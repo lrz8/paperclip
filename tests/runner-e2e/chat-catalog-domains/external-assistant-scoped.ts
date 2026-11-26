@@ -7,11 +7,12 @@ import { prepareAssistantSetup } from "./external-assistant-connections.js";
 import { runScopedCompanion,companionBounds } from "./external-assistant-model.js";
 import { definition,root,checks,externalObservation,observeExternal } from "./external-support.js";
 import { identityWorker } from "./identity-support.js";
+import { permanentlyDeleteTaskFixture } from "./internal-support.js";
 interface Fixture {tokens:Tokens;client:Awaited<ReturnType<typeof mcp>>;grantId:string;controlId?:string;otherCompanyId?:string}
 const fixtures=new WeakMap<ChatCatalogContext,Fixture>();
 function deniedAuthority(result:ToolResult){return result.isError===true&&result.content.some(row=>row.type==="text"&&/HTTP 403|paperclip:write permission is required/.test(row.text??""));}
 function sourceTaskId(result:ToolResult){return (result.structuredContent?.task as {id?:string}|undefined)?.id;}
-async function dispose(ctx:ChatCatalogContext){const fixture=fixtures.get(ctx);fixtures.delete(ctx);if(!fixture)return;try{await fixture.client.close();await ctx.input.api.delete(`/api/mcp/connections/${fixture.grantId}`,{allowNotFound:true});if(fixture.controlId)await ctx.input.api.delete(`/api/issues/${fixture.controlId}`,{allowNotFound:true});if(fixture.otherCompanyId)await ctx.input.api.delete(`/api/companies/${fixture.otherCompanyId}`,{allowNotFound:true});}finally{/* Whole disposable company cleanup owns a legitimately created target task. */}}
+async function dispose(ctx:ChatCatalogContext){const fixture=fixtures.get(ctx);fixtures.delete(ctx);if(!fixture)return;try{await fixture.client.close();await ctx.input.api.delete(`/api/mcp/connections/${fixture.grantId}`,{allowNotFound:true});if(fixture.controlId)await permanentlyDeleteTaskFixture(ctx,fixture.controlId,{cancel:true,allowNotFound:true});if(fixture.otherCompanyId)await ctx.input.api.delete(`/api/companies/${fixture.otherCompanyId}`,{allowNotFound:true});}finally{/* Whole disposable company cleanup owns a legitimately created target task. */}}
 export function gradeScopedAssistant(value:unknown){
  const c=checks(),o=externalObservation(value);c.add("complete-real-external-assistant-evidence",!!o,"The exact external-model query, actual model-selected MCP mutation, independent task/actor evidence and scope controls are required.");if(!o)return c.result();
  const result=o.state.companionSurfaceResult as ChatCompanionResult|undefined;

@@ -2,6 +2,7 @@ import { collectConversationLinksWithDiagnostics, conversationLinkLocator, markd
 import { expect } from "@playwright/test";
 import type { ChatCatalogContext } from "../chat-catalog-contract.js";
 import type { ChatRun } from "../chat-flow.js";
+import { RunnerApiHttpError } from "../api.js";
 
 export interface Entity {
   id: string; companyId?: string; name?: string; title?: string; description?: string | null;
@@ -31,6 +32,26 @@ export async function project(ctx: ChatCatalogContext, name = "Launch", extra: R
 export async function task(ctx: ChatCatalogContext, title: string, projectId: string, extra: Record<string, unknown> = {}) {
   // Backlog fixtures never start provider work. These are prerequisite records, not requested outcomes.
   return ctx.input.api.post<Entity>(`${companyPath(ctx)}/issues`, { title, projectId, status: "backlog", priority: "medium", ...extra });
+}
+
+export async function permanentlyDeleteTaskFixture(
+  ctx: ChatCatalogContext,
+  taskId: string,
+  options: { cancel?: boolean; allowNotFound?: boolean } = {},
+) {
+  const api = ctx.input.api;
+  const path = `/api/issues/${encodeURIComponent(taskId)}`;
+  if (options.allowNotFound) {
+    try {
+      await api.get(path);
+    } catch (error) {
+      if (error instanceof RunnerApiHttpError && error.status === 404) return;
+      throw error;
+    }
+  }
+  if (options.cancel) await api.patch(path, { status: "cancelled" });
+  await api.post(`${path}/task-archive`, {});
+  await api.delete(`${path}?confirm=${encodeURIComponent(taskId)}`, { allowNotFound: options.allowNotFound });
 }
 export async function goal(ctx: ChatCatalogContext, title: string, extra: Record<string, unknown> = {}) {
   return ctx.input.api.post<Entity>(`${companyPath(ctx)}/goals`, { title, level: "company", ownerAgentId: ctx.input.fixtures.agent.id, ...extra });

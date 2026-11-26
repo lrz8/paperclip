@@ -129,8 +129,12 @@ export async function deleteAgentDependencies(tx: Db, companyId: string, id: str
   await tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, id));
   await tx
     .update(issues)
-    .set({ assigneeAgentId: null, createdByAgentId: null })
-    .where(or(eq(issues.assigneeAgentId, id), eq(issues.createdByAgentId, id)));
+    .set({ assigneeAgentId: null })
+    .where(and(eq(issues.companyId, companyId), eq(issues.assigneeAgentId, id)));
+  await tx
+    .update(issues)
+    .set({ createdByAgentId: null })
+    .where(and(eq(issues.companyId, companyId), eq(issues.createdByAgentId, id)));
   await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.agentId, id));
   await tx.update(activityLog).set({ agentId: null }).where(and(eq(activityLog.companyId, companyId), eq(activityLog.agentId, id)));
   await tx.update(activityLog).set({ runId: null }).where(and(eq(activityLog.companyId, companyId), sql`${activityLog.runId} in (${agentRuns})`));

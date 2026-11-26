@@ -5,7 +5,7 @@ import { pollUntil } from "../api.js";
 import { RunnerApiHttpError } from "../api.js";
 import { createAuthenticatedPerson, enrollPrerequisitePerson } from "./identity-auth.js";
 import { makeDefinition } from "./internal-definition.js";
-import { checks, entity, hasLink, observation, observeInternal, project, sameTask, task, type Entity, type InternalObservation } from "./internal-support.js";
+import { checks, entity, hasLink, observation, observeInternal, permanentlyDeleteTaskFixture, project, sameTask, task, type Entity, type InternalObservation } from "./internal-support.js";
 
 interface InboxItem extends Entity { archivedByActorType?: string; archivedByAgentId?: string; archivedByRunId?: string }
 interface TriageObservation extends InternalObservation {
@@ -149,7 +149,7 @@ function triageCase(scenarioId: string): ChatCatalogCase {
         const first = await waitForArchive(ctx, state, observe, false); state.firstArchive = { ...first, state: structuredClone(state) };
         await ctx.input.evidence("chat-catalog-real-prior-inbox-operation.json", state.firstArchive);
         const missing = originalTasks.filter(row => row.status === "done")[2]!;
-        await ctx.input.api.delete(`/api/issues/${missing.id}`); state.unrestorableTask = missing;
+        await permanentlyDeleteTaskFixture(ctx, missing.id); state.unrestorableTask = missing;
         await ctx.input.evidence("chat-catalog-between-cleanup-and-undo-deletion.json", { taskId: missing.id, actorUserId: session.user.id, action: "Owner deletes one archived item through the supported public task delete API before the canonical undo request." });
       }
       return state;

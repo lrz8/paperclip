@@ -851,20 +851,20 @@ function KitchenSinkIssueCrudDemo({ context }: { context: PluginPageProps["conte
     }
   }
 
-  async function handleDelete(issueId: string) {
+  async function handleArchive(issueId: string) {
     try {
-      await hostFetchJson(`/api/issues/${issueId}`, { method: "DELETE" });
-      toast({ title: "Issue deleted", tone: "info" });
+      await hostFetchJson(`/api/issues/${issueId}/task-archive`, { method: "POST" });
+      toast({ title: "Task archived", tone: "info" });
       await loadIssues();
     } catch (nextError) {
-      toast({ title: "Issue delete failed", body: getErrorMessage(nextError), tone: "error" });
+      toast({ title: "Task archive failed", body: getErrorMessage(nextError), tone: "error" });
     }
   }
 
   return (
-    <Section title="Issue CRUD">
+    <Section title="Task management">
       <div style={mutedTextStyle}>
-        This is a regular embedded React page inside Paperclip calling the board API directly. It creates, updates, and deletes issues for the current company.
+        This embedded page creates and updates tasks for the current company through the board API. Save a task as done or cancelled before archiving it.
       </div>
       {!context.companyId ? (
         <div style={mutedTextStyle}>Select a company to use issue demos.</div>
@@ -914,8 +914,8 @@ function KitchenSinkIssueCrudDemo({ context }: { context: PluginPageProps["conte
                     <button type="button" style={buttonStyle} onClick={() => void handleSave(issue.id)}>
                       Save
                     </button>
-                    <button type="button" style={buttonStyle} onClick={() => void handleDelete(issue.id)}>
-                      Delete
+                    <button type="button" style={buttonStyle} disabled={issue.status !== "done" && issue.status !== "cancelled"} onClick={() => void handleArchive(issue.id)}>
+                      Archive
                     </button>
                   </div>
                 </div>

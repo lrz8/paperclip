@@ -4,7 +4,7 @@ import type { ChatCatalogCase, ChatCatalogContext } from "../chat-catalog-contra
 import { RunnerApiHttpError } from "../api.js";
 import { CHAT_ANNOUNCEMENT_MANIFEST } from "../chat-announcement-fixture.js";
 import { createAuthenticatedPerson, enrollPrerequisitePerson } from "./identity-auth.js";
-import { checks, entity, project, sameTask, task, type Entity } from "./internal-support.js";
+import { checks, entity, permanentlyDeleteTaskFixture, project, sameTask, task, type Entity } from "./internal-support.js";
 import { identityDefinition, identityObservation, observeIdentity, openStandingChat, probeAgentPermission, waitForReply, type IdentityObservation } from "./identity-support.js";
 
 type Person = Awaited<ReturnType<typeof createAuthenticatedPerson>>;
@@ -74,7 +74,7 @@ async function openAnnouncementCompanySurface(ctx: ChatCatalogContext, issuePref
 export const navigationBoundaryIdentityCases: readonly ChatCatalogCase[] = [
   identityDefinition("navigation-preferences.broken-link", async ctx => {
     const source = await openStandingChat(ctx); const p = await project(ctx);
-    const stale = await task(ctx, "Launch website draft", p.id, { description: "Website draft for Launch." });
+    const stale = await task(ctx, "Launch website draft", p.id, { status: "done", description: "Website draft for Launch." });
     const elsewhere = await ctx.input.api.post<Entity>(`/api/companies/${ctx.input.fixtures.company.id}/projects`, { name: "Archived launch context" });
     const similar = await task(ctx, "Launch website draft revision", elsewhere.id, { description: "Current draft for the Archived launch context project." });
     const [savedOriginal, savedSimilar] = await Promise.all([stale, similar].map(row => ctx.input.api.get<Entity>(`/api/issues/${row.id}`)));
@@ -82,7 +82,7 @@ export const navigationBoundaryIdentityCases: readonly ChatCatalogCase[] = [
     const restrictedMarker = `Private unrelated acquisition ${ctx.input.nonce}`;
     const restricted = await task(ctx, "Private acquisition", elsewhere.id, { visibility: "private", description: restrictedMarker });
     const path = `/${ctx.input.fixtures.company.issuePrefix}/issues/${stale.identifier}?tab=activity`;
-    await ctx.input.api.delete(`/api/issues/${stale.id}`);
+    await permanentlyDeleteTaskFixture(ctx, stale.id);
     await ctx.input.api.patch(`/api/issues/${source.id}`, { description: `The person supplied this old task link: ${ctx.input.api.baseURL}${path}` });
     const browser = ctx.input.page.context().browser(); if (!browser || !ctx.input.privateSecrets) throw new Error("Missing independent real-user setup");
     const observer = await createAuthenticatedPerson({ api: ctx.input.api, browser, secrets: ctx.input.privateSecrets, name: "Riley" }); observers.set(ctx, observer);

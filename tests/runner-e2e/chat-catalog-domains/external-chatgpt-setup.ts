@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { permanentlyDeleteTaskFixture } from "./internal-support.js";
 import type { ChatCatalogContext } from "../chat-catalog-contract.js";
 import type {
   McpConnection,
@@ -450,9 +451,7 @@ export const chatgptSetupCase = definition(
             { allowNotFound: true },
           );
         if (typeof state.controlTaskId === "string")
-          await ctx.input.api.delete(`/api/issues/${state.controlTaskId}`, {
-            allowNotFound: true,
-          });
+          await permanentlyDeleteTaskFixture(ctx, state.controlTaskId, { cancel: true, allowNotFound: true });
       }
     },
   },
